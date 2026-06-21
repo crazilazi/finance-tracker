@@ -12,6 +12,7 @@ import InsightsTab from './features/insights/components/InsightsTab';
 import SimulatorTab from './features/simulator/components/SimulatorTab';
 import DataTableTab from './features/expenses/components/DataTableTab';
 import ExpenseModal from './features/expenses/components/ExpenseModal';
+import Login from './components/Login';
 import { DARK, LIGHT } from './components/ThemeProvider';
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
   const currentPage = useSelector(state => state.expenses.currentPage);
   const loading     = useSelector(state => state.expenses.loading);
   const themeMode   = useSelector(state => state.expenses.theme);
+  const user        = useSelector(state => state.expenses.user);
   const isDark      = themeMode === 'dark';
   const c           = isDark ? DARK : LIGHT;  // active palette
 
@@ -27,7 +29,7 @@ export default function App() {
   const [editIndex, setEditIndex]   = useState(null);
 
   useEffect(() => {
-    dispatch({ type: 'expenses/fetchExpenses' });
+    dispatch({ type: 'expenses/checkAuthSession' });
   }, [dispatch]);
 
   const handleEdit = (index) => {
@@ -71,6 +73,10 @@ export default function App() {
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
+  }
+
+  if (!user.authenticated) {
+    return <Login />;
   }
 
   return (

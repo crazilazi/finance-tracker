@@ -35,14 +35,24 @@ async function run() {
     console.log('Ensuring database table exists...');
     await pool.request().query(`
       IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Expenses' AND xtype='U')
-      CREATE TABLE Expenses (
-        id INT IDENTITY(1,1) PRIMARY KEY,
-        month VARCHAR(7) NOT NULL,
-        category NVARCHAR(100) NOT NULL,
-        amount DECIMAL(18,2) NOT NULL,
-        type VARCHAR(20) NOT NULL,
-        sheet NVARCHAR(100) NULL
-      )
+      BEGIN
+        CREATE TABLE Expenses (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          month VARCHAR(7) NOT NULL,
+          category NVARCHAR(100) NOT NULL,
+          amount DECIMAL(18,2) NOT NULL,
+          type VARCHAR(20) NOT NULL,
+          sheet NVARCHAR(100) NULL,
+          username NVARCHAR(100) NOT NULL DEFAULT 'Default User'
+        );
+      END
+      ELSE
+      BEGIN
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Expenses') AND name = 'username')
+        BEGIN
+          ALTER TABLE Expenses ADD username NVARCHAR(100) NOT NULL DEFAULT 'Default User';
+        END
+      END
     `);
 
     const jsonPath = path.resolve(__dirname, '../public/expense_data.json');
@@ -65,10 +75,11 @@ async function run() {
         insertReq.input('amount', mssql.Decimal(18, 2), item.amount);
         insertReq.input('type', mssql.VarChar(20), item.type);
         insertReq.input('sheet', mssql.NVarChar(100), item.sheet || null);
+        insertReq.input('username', mssql.NVarChar(100), item.username || 'Default User');
 
         await insertReq.query(`
-          INSERT INTO Expenses (month, category, amount, type, sheet)
-          VALUES (@month, @category, @amount, @type, @sheet)
+          INSERT INTO Expenses (month, category, amount, type, sheet, username)
+          VALUES (@month, @category, @amount, @type, @sheet, @username)
         `);
         
         if ((i + 1) % 100 === 0) {

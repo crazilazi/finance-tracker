@@ -79,7 +79,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
           ₹
         </div>
         <span style={{ color: c.TEXT_BASE, fontWeight: 700, fontSize: 17, letterSpacing: '0.05em' }}>
-          Gaddi Tracker
+          Finance Tracker
         </span>
       </div>
 

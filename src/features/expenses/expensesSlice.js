@@ -17,13 +17,21 @@ const initialState = {
   healthScore: 0,
   healthMetrics: { savingsRate: 0, emiBurden: 0, stability: 0, anomalyScore: 0 },
   undoStack: [],
-  loading: true
+  loading: true,
+  user: { authenticated: false, username: null, email: null }
 };
 
 const expensesSlice = createSlice({
   name: 'expenses',
   initialState,
   reducers: {
+    setUser(state, action) {
+      state.user = action.payload;
+    },
+    logoutUser(state) {
+      state.user = { authenticated: false, username: null, email: null };
+      state.rawData = [];
+    },
     setLoading(state, action) {
       state.loading = action.payload;
     },
@@ -169,6 +177,8 @@ const expensesSlice = createSlice({
 });
 
 export const {
+  setUser,
+  logoutUser,
   setLoading,
   setExpenses,
   addExpense,

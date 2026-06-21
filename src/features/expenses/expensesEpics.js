@@ -2,6 +2,8 @@ import { ofType } from 'redux-observable';
 import { from, of } from 'rxjs';
 import { map, mergeMap, tap, withLatestFrom, catchError } from 'rxjs/operators';
 import {
+  setUser,
+  logoutUser,
   setExpenses,
   setLoading,
   setAnalyticsResults,
@@ -103,7 +105,6 @@ export const saveExpensesEpic = (action$, state$) =>
       });
     }),
     map(([action, state]) => {
-      // Recalculate spending analytics in real-time
       const rawData = state.expenses.rawData;
       const anomalies = detectAnomalies(rawData);
       const alerts = generateAlerts(rawData, anomalies);
@@ -120,5 +121,50 @@ export const saveExpensesEpic = (action$, state$) =>
           anomalyScore: health.anomalyScore
         }
       });
+    })
+  );
+
+export const checkAuthSessionEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/checkAuthSession'),
+    mergeMap(() => {
+      return from(
+        fetch('/api/auth/me')
+          .then(res => res.json())
+      ).pipe(
+        mergeMap(data => {
+          if (data.authenticated) {
+            return of(
+              setUser({ authenticated: true, username: data.username, email: data.email }),
+              { type: 'expenses/fetchExpenses' }
+            );
+          } else {
+            return of(
+              setUser({ authenticated: false, username: null, email: null }),
+              setLoading(false)
+            );
+          }
+        }),
+        catchError(err => {
+          console.error('Check auth session failed:', err);
+          return of(
+            setUser({ authenticated: false, username: null, email: null }),
+            setLoading(false)
+          );
+        })
+      );
+    })
+  );
+
+export const logoutEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/logout'),
+    mergeMap(() => {
+      return from(
+        fetch('/api/auth/logout', { method: 'POST' })
+          .then(res => res.json())
+      ).pipe(
+        map(() => logoutUser())
+      );
     })
   );

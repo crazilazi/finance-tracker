@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Button, Select, Badge, Drawer, Switch, Input, Tooltip } from 'antd';
-import { MenuOutlined, BellOutlined, SunOutlined, MoonOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
+import { Button, Select, Badge, Drawer, Switch, Input, Tooltip, Avatar } from 'antd';
+import { MenuOutlined, BellOutlined, SunOutlined, MoonOutlined, EyeOutlined, EyeInvisibleOutlined, LogoutOutlined } from '@ant-design/icons';
 import { setTheme, setFilter, setQuery, toggleHideAmounts } from '../../features/expenses/expensesSlice';
 import { DARK } from '../ThemeProvider';
 
@@ -16,6 +16,7 @@ export default function TopBar({ setMobileOpen, palette }) {
   const query       = useSelector(state => state.expenses.query || '');
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
   const alerts      = useSelector(state => state.expenses.alerts);
+  const user        = useSelector(state => state.expenses.user);
   const [drawerVisible, setDrawerVisible] = useState(false);
 
   const c = palette || DARK;
@@ -166,6 +167,32 @@ export default function TopBar({ setMobileOpen, palette }) {
             style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
           />
         </Badge>
+
+        {/* User Profile Avatar & Logout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderLeft: `1px solid ${c.BORDER}`, paddingLeft: 16 }}>
+          <Avatar 
+            style={{ backgroundColor: '#6366f1', verticalAlign: 'middle' }} 
+            size="medium"
+          >
+            {user.username ? user.username[0].toUpperCase() : 'U'}
+          </Avatar>
+          <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }} className="hidden sm:flex">
+            <span style={{ fontSize: 13, fontWeight: 700, color: c.TEXT_BASE, lineHeight: 1.2 }}>
+              {user.username}
+            </span>
+            <span style={{ fontSize: 10, color: c.TEXT_MUTED }}>
+              {user.email || 'authenticated'}
+            </span>
+          </div>
+          <Tooltip title="Log Out">
+            <Button
+              type="text"
+              icon={<LogoutOutlined style={{ color: '#ef4444' }} />}
+              onClick={() => dispatch({ type: 'expenses/logout' })}
+              style={{ width: 36, height: 36, borderRadius: 8 }}
+            />
+          </Tooltip>
+        </div>
       </div>
 
       {/* ── Slide-in Notifications Drawer ─────────────────────── */}
