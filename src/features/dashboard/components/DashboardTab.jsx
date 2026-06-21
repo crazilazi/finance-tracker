@@ -1,0 +1,299 @@
+import React from 'react';
+import { useSelector } from 'react-redux';
+import { Card, Row, Col, Progress } from 'antd';
+import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { Bar, Doughnut } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement
+} from 'chart.js';
+import HealthGauge from '../../../components/ui/HealthGauge';
+import Sparkline from '../../../components/ui/Sparkline';
+import { getMonthlyTotals, pctChange, getCategoryTotals, calculateHealthScore, detectAnomalies, matchSmartQuery } from '../../../utils/financeEngine';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
+
+const COLORS = {
+  primary: '#6366f1',
+  green: '#10b981',
+  red: '#ef4444',
+  yellow: '#f59e0b',
+  blue: '#3b82f6',
+  purple: '#8b5cf6',
+  cyan: '#06b6d4',
+  orange: '#f97316',
+  palette: [
+    '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316',
+    '#f59e0b', '#10b981', '#06b6d4', '#3b82f6', '#14b8a6'
+  ]
+};
+
+export default function DashboardTab() {
+  const rawData = useSelector(state => state.expenses.rawData);
+  const filter  = useSelector(state => state.expenses.filter);
+  const query   = useSelector(state => state.expenses.query);
+  const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+  // NOTE: healthScore/healthMetrics are computed locally from filtered data
+  //       (not from Redux) so they always match the selected time range.
+
+  const getFilteredData = () => {
+    let data = rawData;
+    if (filter !== 'all') {
+      const allMonths = [...new Set(rawData.map(d => d.month))].sort();
+      if (filter.startsWith('last')) {
+        const n = parseInt(filter.replace('last', ''));
+        const cutoffMonths = allMonths.slice(-n);
+        data = rawData.filter(d => cutoffMonths.includes(d.month));
+      } else {
+        data = rawData.filter(d => d.month.startsWith(filter));
+      }
+    }
+    if (query) {
+      data = data.filter(d => matchSmartQuery(d, query));
+    }
+    return data;
+  };
+
+  const filtered       = getFilteredData();
+  const months         = [...new Set(filtered.map(d => d.month))].sort();
+  const monthlyTotals  = getMonthlyTotals(filtered);
+
+  // ── Compute health score & metrics from filtered data ─────
+  const filteredAnomalies = detectAnomalies(filtered);
+  const health            = calculateHealthScore(filtered, filteredAnomalies);
+  const healthScore       = health.score;
+  const healthMetrics     = {
+    savingsRate:  health.savingsRate,
+    emiBurden:    health.emiBurden,
+    stability:    health.stability,
+    anomalyScore: health.anomalyScore,
+  };
+
+  // Compute key stats
+  const totalSpent = filtered.reduce((sum, d) => sum + d.amount, 0);
+  
+  const expenseData = filtered.filter(d => d.type === 'Expense');
+  const avgExpense = months.length ? expenseData.reduce((sum, d) => sum + d.amount, 0) / months.length : 0;
+  
+  const emiData = filtered.filter(d => d.type === 'EMI');
+  const avgEmi = months.length ? emiData.reduce((sum, d) => sum + d.amount, 0) / months.length : 0;
+  
+  const savingData = filtered.filter(d => d.type === 'Saving');
+  const totalSaving = savingData.reduce((sum, d) => sum + d.amount, 0);
+
+  // Sparkline data
+  const sparklineTotal = months.map(m => monthlyTotals[m]?.total || 0);
+  const sparklineExpense = months.map(m => monthlyTotals[m]?.Expense || 0);
+  const sparklineEmi = months.map(m => monthlyTotals[m]?.EMI || 0);
+  const sparklineSaving = months.map(m => monthlyTotals[m]?.Saving || 0);
+
+  const getMomTrend = (currArr) => {
+    if (currArr.length < 2) return null;
+    const curr = currArr[currArr.length - 1];
+    const prev = currArr[currArr.length - 2];
+    const change = pctChange(curr, prev);
+    
+    if (change.pct === '0.0') return null;
+    
+    const isUp = change.dir === 'up';
+    return (
+      <span className={`text-xs font-bold flex items-center gap-0.5 ${isUp ? 'text-red-400' : 'text-green-400'}`}>
+        {isUp ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+        {change.pct}%
+      </span>
+    );
+  };
+
+  // Stacked Bar configuration
+  const barData = {
+    labels: months.map(m => {
+      const [y, mo] = m.split('-');
+      const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return names[parseInt(mo) - 1] + ' ' + y.slice(2);
+    }),
+    datasets: [
+      { label: 'Expenses', data: months.map(m => monthlyTotals[m]?.Expense || 0), backgroundColor: COLORS.red },
+      { label: 'EMIs', data: months.map(m => monthlyTotals[m]?.EMI || 0), backgroundColor: COLORS.blue },
+      { label: 'Savings', data: months.map(m => monthlyTotals[m]?.Saving || 0), backgroundColor: COLORS.green }
+    ]
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', labels: { color: '#9ca3af', font: { family: 'Inter', size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => hideAmounts ? `${ctx.dataset.label}: ₹•••••` : `${ctx.dataset.label}: ₹${Math.round(ctx.raw).toLocaleString('en-IN')}`
+        }
+      }
+    },
+    scales: {
+      x: { stacked: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#9ca3af', font: { family: 'Inter', size: 10 } } },
+      y: { stacked: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#9ca3af', font: { family: 'Inter', size: 10 }, callback: (val) => hideAmounts ? '•••••' : val } }
+    }
+  };
+
+  // Donut chart configuration
+  const catTotals = getCategoryTotals(filtered).slice(0, 8);
+  const donutData = {
+    labels: catTotals.map(c => c[0]),
+    datasets: [
+      {
+        data: catTotals.map(c => c[1]),
+        backgroundColor: COLORS.palette,
+        borderWidth: 1,
+        borderColor: '#161d30'
+      }
+    ]
+  };
+
+  const donutOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'right', labels: { color: '#9ca3af', boxWidth: 10, font: { family: 'Inter', size: 9 } } },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => hideAmounts ? `${ctx.label}: ₹•••••` : `${ctx.label}: ₹${Math.round(ctx.raw).toLocaleString('en-IN')}`
+        }
+      }
+    }
+  };
+
+  const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* KPI Row */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-gray-400 font-semibold text-xs mb-1">Total Outflow</div>
+                <div className="text-2xl font-black">{formatINR(totalSpent)}</div>
+              </div>
+              <div className="bg-indigo-500/10 p-2 rounded-xl text-lg text-indigo-400 leading-none">💰</div>
+            </div>
+            <div className="flex justify-between items-center mt-4">
+              {getMomTrend(sparklineTotal)}
+              <Sparkline data={sparklineTotal} color={COLORS.primary} />
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-gray-400 font-semibold text-xs mb-1">Monthly Avg Expense</div>
+                <div className="text-2xl font-black">{formatINR(avgExpense)}</div>
+              </div>
+              <div className="bg-red-500/10 p-2 rounded-xl text-lg text-red-400 leading-none">🛒</div>
+            </div>
+            <div className="flex justify-between items-center mt-4">
+              {getMomTrend(sparklineExpense)}
+              <Sparkline data={sparklineExpense} color={COLORS.red} />
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-gray-400 font-semibold text-xs mb-1">Monthly Avg EMI</div>
+                <div className="text-2xl font-black">{formatINR(avgEmi)}</div>
+              </div>
+              <div className="bg-blue-500/10 p-2 rounded-xl text-lg text-blue-400 leading-none">🏦</div>
+            </div>
+            <div className="flex justify-between items-center mt-4">
+              {getMomTrend(sparklineEmi)}
+              <Sparkline data={sparklineEmi} color={COLORS.blue} />
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-gray-400 font-semibold text-xs mb-1">Total Savings</div>
+                <div className="text-2xl font-black">{formatINR(totalSaving)}</div>
+              </div>
+              <div className="bg-green-500/10 p-2 rounded-xl text-lg text-green-400 leading-none">🐷</div>
+            </div>
+            <div className="flex justify-between items-center mt-4">
+              {getMomTrend(sparklineSaving)}
+              <Sparkline data={sparklineSaving} color={COLORS.green} />
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Charts */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={16}>
+          <Card title="Monthly Spending Overview" className="bg-dark-card border-dark-border text-white shadow-xl">
+            <div className="h-[280px]">
+              <Bar data={barData} options={chartOptions} />
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} lg={8}>
+          <Card title="Category Distribution (Top 8)" className="bg-dark-card border-dark-border text-white shadow-xl">
+            <div className="h-[280px]">
+              <Doughnut data={donutData} options={donutOptions} />
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Health Score Gauge */}
+      <Card title="💓 Financial Health Index" className="bg-dark-card border-dark-border text-white shadow-xl">
+        <Row gutter={[24, 24]} align="middle">
+          <Col xs={24} md={8} className="flex justify-center">
+            <HealthGauge score={healthScore} />
+          </Col>
+          <Col xs={24} md={16}>
+            <div className="flex flex-col gap-4">
+              <div>
+                <div className="flex justify-between text-xs font-semibold text-gray-400 mb-1">
+                  <span>Savings Rate (Benchmark: 15%+)</span>
+                  <span className="text-green-400 font-bold">{healthMetrics.savingsRate}%</span>
+                </div>
+                <Progress percent={Math.min(100, (healthMetrics.savingsRate / 15) * 100)} showInfo={false} strokeColor={COLORS.green} trailColor="rgba(255,255,255,0.05)" />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs font-semibold text-gray-400 mb-1">
+                  <span>EMI Burden Ratio (Target: Under 30%)</span>
+                  <span className={`font-bold ${healthMetrics.emiBurden > 30 ? 'text-red-400' : 'text-blue-400'}`}>{healthMetrics.emiBurden}%</span>
+                </div>
+                <Progress percent={Math.min(100, healthMetrics.emiBurden)} showInfo={false} strokeColor={healthMetrics.emiBurden > 30 ? COLORS.red : COLORS.blue} trailColor="rgba(255,255,255,0.05)" />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs font-semibold text-gray-400 mb-1">
+                  <span>Spending Stability Index</span>
+                  <span className="text-indigo-400 font-bold">{healthMetrics.stability}%</span>
+                </div>
+                <Progress percent={healthMetrics.stability} showInfo={false} strokeColor={COLORS.primary} trailColor="rgba(255,255,255,0.05)" />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs font-semibold text-gray-400 mb-1">
+                  <span>Anomaly Safety Score</span>
+                  <span className="text-yellow-400 font-bold">{healthMetrics.anomalyScore}%</span>
+                </div>
+                <Progress percent={healthMetrics.anomalyScore} showInfo={false} strokeColor={COLORS.yellow} trailColor="rgba(255,255,255,0.05)" />
+              </div>
+            </div>
+          </Col>
+        </Row>
+      </Card>
+    </div>
+  );
+}

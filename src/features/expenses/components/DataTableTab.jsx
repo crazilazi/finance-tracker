@@ -1,0 +1,265 @@
+import React, { useState } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification } from 'antd';
+import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined } from '@ant-design/icons';
+import {
+  setTableFilters,
+  setSort,
+  deleteExpense,
+  undoAction,
+  setDataPage
+} from '../expensesSlice';
+
+import { matchSmartQuery } from '../../../utils/financeEngine';
+
+const { Option } = Select;
+
+export default function DataTableTab({ onEdit }) {
+  const dispatch = useDispatch();
+  const rawData = useSelector(state => state.expenses.rawData);
+  const tableFilters = useSelector(state => state.expenses.tableFilters);
+  const sortCol = useSelector(state => state.expenses.sortCol);
+  const sortDir = useSelector(state => state.expenses.sortDir);
+  const dataPage = useSelector(state => state.expenses.dataPage);
+  const pageSize = useSelector(state => state.expenses.pageSize);
+  const anomalies = useSelector(state => state.expenses.anomalies);
+  const filter = useSelector(state => state.expenses.filter);
+  const query = useSelector(state => state.expenses.query);
+  const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+
+  const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
+  
+  const formatMonth = (m) => {
+    const [y, mo] = m.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[parseInt(mo) - 1] + ' ' + y.slice(2);
+  };
+
+  // Time and Query filter logic
+  const getFilteredData = () => {
+    let data = rawData;
+    if (filter !== 'all') {
+      const allMonths = [...new Set(rawData.map(d => d.month))].sort();
+      if (filter.startsWith('last')) {
+        const n = parseInt(filter.replace('last', ''));
+        const cutoffMonths = allMonths.slice(-n);
+        data = rawData.filter(d => cutoffMonths.includes(d.month));
+      } else {
+        data = rawData.filter(d => d.month.startsWith(filter));
+      }
+    }
+    if (query) {
+      data = data.filter(d => matchSmartQuery(d, query));
+    }
+    return data;
+  };
+
+  const filtered = getFilteredData();
+  const categories = [...new Set(filtered.map(d => d.category))].sort();
+
+  // Filter & Search Table Data
+  let tableData = filtered.map((d, index) => ({ ...d, originalIndex: index }));
+
+  if (tableFilters.type !== 'all') {
+    tableData = tableData.filter(d => d.type === tableFilters.type);
+  }
+  if (tableFilters.category !== 'all') {
+    tableData = tableData.filter(d => d.category === tableFilters.category);
+  }
+  if (tableFilters.search) {
+    const q = tableFilters.search.toLowerCase();
+    tableData = tableData.filter(
+      d => d.category.toLowerCase().includes(q) || d.month.includes(q)
+    );
+  }
+
+  // Sort Table Data
+  tableData = [...tableData].sort((a, b) => {
+    let valA = a[sortCol];
+    let valB = b[sortCol];
+    if (sortCol === 'amount') {
+      valA = parseFloat(valA);
+      valB = parseFloat(valB);
+    }
+    if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Anomaly checks lookup set
+  const anomalyKeys = new Set(anomalies.filter(a => a.type !== 'missing').map(a => `${a.month}-${a.category}`));
+  const highAnomalyKeys = new Set(anomalies.filter(a => a.severity === 'high').map(a => `${a.month}-${a.category}`));
+
+  const handleDelete = (originalIndex) => {
+    const item = rawData[originalIndex];
+    dispatch(deleteExpense(originalIndex));
+    
+    // Trigger undo notification toast
+    const key = `delete-${Date.now()}`;
+    const btn = (
+      <Button
+        type="primary"
+        size="small"
+        onClick={() => {
+          dispatch(undoAction());
+          notification.destroy(key);
+        }}
+        icon={<UndoOutlined />}
+      >
+        Undo
+      </Button>
+    );
+    notification.success({
+      message: 'Expense Deleted',
+      description: `Removed ${item.category} — ${formatINR(item.amount)}`,
+      btn,
+      key,
+      duration: 5
+    });
+  };
+
+  const columns = [
+    {
+      title: 'Month',
+      dataIndex: 'month',
+      key: 'month',
+      sorter: true,
+      sortOrder: sortCol === 'month' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null,
+      render: (m) => formatMonth(m)
+    },
+    {
+      title: 'Category',
+      dataIndex: 'category',
+      key: 'category',
+      sorter: true,
+      sortOrder: sortCol === 'category' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null
+    },
+    {
+      title: 'Type',
+      dataIndex: 'type',
+      key: 'type',
+      sorter: true,
+      sortOrder: sortCol === 'type' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null,
+      render: (t) => {
+        const colors = { Expense: 'red', EMI: 'blue', Saving: 'green' };
+        return <Tag color={colors[t] || 'default'}>{t}</Tag>;
+      }
+    },
+    {
+      title: 'Amount',
+      dataIndex: 'amount',
+      key: 'amount',
+      sorter: true,
+      sortOrder: sortCol === 'amount' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null,
+      render: (amt) => <span className="font-semibold text-gray-100">{formatINR(amt)}</span>
+    },
+    {
+      title: 'Status',
+      key: 'status',
+      render: (_, record) => {
+        const key = `${record.month}-${record.category}`;
+        const isHigh = highAnomalyKeys.has(key);
+        const isAnomaly = anomalyKeys.has(key);
+        
+        if (isHigh) return <Tag color="error">Anomaly</Tag>;
+        if (isAnomaly) return <Tag color="warning">Warning</Tag>;
+        return <Tag color="success">Normal</Tag>;
+      }
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 100,
+      render: (_, record) => (
+        <div className="flex gap-2">
+          <Button
+            type="text"
+            icon={<EditOutlined className="text-gray-400 hover:text-indigo-400" />}
+            onClick={() => onEdit(record.originalIndex)}
+            className="hover:bg-gray-800"
+          />
+          <Popconfirm
+            title="Delete Expense?"
+            description="Are you sure you want to delete this record?"
+            onConfirm={() => handleDelete(record.originalIndex)}
+            okText="Yes"
+            cancelText="No"
+            placement="topRight"
+            popupClassName="dark-popconfirm"
+          >
+            <Button
+              type="text"
+              icon={<DeleteOutlined className="text-gray-400 hover:text-red-400" />}
+              className="hover:bg-gray-800"
+            />
+          </Popconfirm>
+        </div>
+      )
+    }
+  ];
+
+  return (
+    <Card className="bg-dark-card border-dark-border text-white shadow-xl">
+      {/* Controls Bar */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+          <Input
+            placeholder="Search expenses..."
+            prefix={<SearchOutlined className="text-gray-500" />}
+            value={tableFilters.search}
+            onChange={(e) => dispatch(setTableFilters({ search: e.target.value }))}
+            className="w-full sm:w-60 search-input"
+          />
+          <Select
+            value={tableFilters.type}
+            onChange={(val) => dispatch(setTableFilters({ type: val }))}
+            className="w-full sm:w-36"
+            popupClassName="dark-dropdown"
+          >
+            <Option value="all">All Types</Option>
+            <Option value="Expense">Expenses</Option>
+            <Option value="EMI">EMIs</Option>
+            <Option value="Saving">Savings</Option>
+          </Select>
+          <Select
+            value={tableFilters.category}
+            onChange={(val) => dispatch(setTableFilters({ category: val }))}
+            className="w-full sm:w-44"
+            popupClassName="dark-dropdown"
+            showSearch
+            filterOption={(input, option) =>
+              (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+          >
+            <Option value="all">All Categories</Option>
+            {categories.map(c => (
+              <Option key={c} value={c}>{c}</Option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      {/* Main Table */}
+      <Table
+        dataSource={tableData}
+        columns={columns}
+        rowKey="originalIndex"
+        pagination={{
+          current: dataPage,
+          pageSize: pageSize,
+          total: tableData.length,
+          onChange: (page) => dispatch(setDataPage(page)),
+          showSizeChanger: false,
+          className: 'dark-pagination'
+        }}
+        onChange={(pagination, filters, sorter) => {
+          if (sorter && sorter.columnKey) {
+            dispatch(setSort(sorter.columnKey));
+          }
+        }}
+        className="dark-table"
+        locale={{ emptyText: <div className="text-gray-500">No records found.</div> }}
+      />
+    </Card>
+  );
+}
