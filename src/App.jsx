@@ -13,6 +13,7 @@ import SimulatorTab from './features/simulator/components/SimulatorTab';
 import DataTableTab from './features/expenses/components/DataTableTab';
 import ExpenseModal from './features/expenses/components/ExpenseModal';
 import CopyMonthModal from './features/expenses/components/CopyMonthModal';
+import MissingScannerModal from './features/expenses/components/MissingScannerModal';
 import Login from './components/Login';
 import { DARK, LIGHT } from './components/ThemeProvider';
 import { setCurrentPage } from './features/expenses/expensesSlice';
@@ -29,6 +30,7 @@ export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [modalOpen, setModalOpen]   = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [scannerModalOpen, setScannerModalOpen] = useState(false);
   const [editIndex, setEditIndex]   = useState(null);
 
   useEffect(() => {
@@ -70,7 +72,7 @@ export default function App() {
       case 'breakdown':  return <BreakdownTab />;
       case 'insights':   return <InsightsTab />;
       case 'simulator':  return <SimulatorTab />;
-      case 'data':       return <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} />;
+      case 'data':       return <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} onScanMissing={() => setScannerModalOpen(true)} />;
       default:           return <DashboardTab />;
     }
   };
@@ -174,6 +176,13 @@ export default function App() {
       <CopyMonthModal
         open={copyModalOpen}
         onClose={() => setCopyModalOpen(false)}
+      />
+
+      {/* ── Missing Expenses Scanner modal ─────────────────────── */}
+      <MissingScannerModal
+        open={scannerModalOpen}
+        onClose={() => setScannerModalOpen(false)}
+        onOpenCopyTemplate={() => setCopyModalOpen(true)}
       />
     </div>
   );

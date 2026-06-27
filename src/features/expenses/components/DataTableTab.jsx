@@ -14,7 +14,7 @@ import { matchSmartQuery } from '../../../utils/financeEngine';
 
 const { Option } = Select;
 
-export default function DataTableTab({ onEdit, onCopyTemplate }) {
+export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) {
   const dispatch = useDispatch();
   const rawData = useSelector(state => state.expenses.rawData);
   const tableFilters = useSelector(state => state.expenses.tableFilters);
@@ -289,6 +289,22 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
               }}
             >
               Copy Month Template
+            </Button>
+          )}
+          {onScanMissing && (
+            <Button
+              type="default"
+              icon={<SearchOutlined />}
+              onClick={onScanMissing}
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid #374151',
+                color: '#f3f4f6',
+                borderRadius: 8,
+                height: 38
+              }}
+            >
+              Scan Missing Year Data
             </Button>
           )}
         </div>
