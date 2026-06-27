@@ -28,13 +28,7 @@ const githubConfig = {
   clientSecret: envConfig.GITHUB_CLIENT_SECRET || process.env.GITHUB_CLIENT_SECRET || '',
 };
 
-export default defineConfig({
-  plugins: [
-    react(),
-    {
-      name: 'save-data-plugin',
-      configureServer(server) {
-        server.middlewares.use(async (req, res, next) => {
+const middlewareHandler = async (req, res, next) => {
           const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
           const pathname = parsedUrl.pathname;
 
@@ -299,11 +293,26 @@ export default defineConfig({
           } else {
             next();
           }
-        });
+};
+
+export default defineConfig({
+  plugins: [
+    react(),
+    {
+      name: 'save-data-plugin',
+      configureServer(server) {
+        server.middlewares.use(middlewareHandler);
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(middlewareHandler);
       }
     }
   ],
   server: {
+    port: 8080,
+    host: true
+  },
+  preview: {
     port: 8080,
     host: true
   }
