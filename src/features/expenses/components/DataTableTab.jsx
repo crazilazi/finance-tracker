@@ -62,7 +62,10 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
   const uniqueYears = [...new Set(rawData.map(d => d.month.split('-')[0]))].sort().reverse();
 
   // Filter & Search Table Data
-  let tableData = filtered.map((d, index) => ({ ...d, originalIndex: index }));
+  let tableData = filtered.map((d) => {
+    const originalIndex = rawData.findIndex(item => item === d);
+    return { ...d, originalIndex };
+  });
 
   if (selectedYear !== 'all') {
     tableData = tableData.filter(d => d.month.startsWith(selectedYear));
