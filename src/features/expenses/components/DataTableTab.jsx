@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification } from 'antd';
-import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined } from '@ant-design/icons';
+import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, SyncOutlined } from '@ant-design/icons';
 import {
   setTableFilters,
   setSort,
@@ -14,7 +14,7 @@ import { matchSmartQuery } from '../../../utils/financeEngine';
 
 const { Option } = Select;
 
-export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) {
+export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, onReconcile }) {
   const dispatch = useDispatch();
   const rawData = useSelector(state => state.expenses.rawData);
   const tableFilters = useSelector(state => state.expenses.tableFilters);
@@ -305,6 +305,21 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
               }}
             >
               Scan Missing Year Data
+            </Button>
+          )}
+          {onReconcile && (
+            <Button
+              type="primary"
+              icon={<SyncOutlined />}
+              onClick={onReconcile}
+              style={{
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                border: 'none',
+                borderRadius: 8,
+                height: 38
+              }}
+            >
+              Reconcile Statement
             </Button>
           )}
         </div>

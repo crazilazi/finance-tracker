@@ -14,6 +14,7 @@ import DataTableTab from './features/expenses/components/DataTableTab';
 import ExpenseModal from './features/expenses/components/ExpenseModal';
 import CopyMonthModal from './features/expenses/components/CopyMonthModal';
 import MissingScannerModal from './features/expenses/components/MissingScannerModal';
+import StatementReconcilerModal from './features/expenses/components/StatementReconcilerModal';
 import Login from './components/Login';
 import { DARK, LIGHT } from './components/ThemeProvider';
 import { setCurrentPage } from './features/expenses/expensesSlice';
@@ -31,6 +32,7 @@ export default function App() {
   const [modalOpen, setModalOpen]   = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [scannerModalOpen, setScannerModalOpen] = useState(false);
+  const [reconcileModalOpen, setReconcileModalOpen] = useState(false);
   const [editIndex, setEditIndex]   = useState(null);
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function App() {
       case 'breakdown':  return <BreakdownTab />;
       case 'insights':   return <InsightsTab />;
       case 'simulator':  return <SimulatorTab />;
-      case 'data':       return <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} onScanMissing={() => setScannerModalOpen(true)} />;
+      case 'data':       return <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} onScanMissing={() => setScannerModalOpen(true)} onReconcile={() => setReconcileModalOpen(true)} />;
       default:           return <DashboardTab />;
     }
   };
@@ -183,6 +185,12 @@ export default function App() {
         open={scannerModalOpen}
         onClose={() => setScannerModalOpen(false)}
         onOpenCopyTemplate={() => setCopyModalOpen(true)}
+      />
+
+      {/* ── Bank Statement Reconciler modal ────────────────────── */}
+      <StatementReconcilerModal
+        open={reconcileModalOpen}
+        onClose={() => setReconcileModalOpen(false)}
       />
     </div>
   );
