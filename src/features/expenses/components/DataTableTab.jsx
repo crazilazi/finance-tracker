@@ -196,13 +196,10 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
             okText="Yes"
             cancelText="No"
             placement="topRight"
-            popupClassName="dark-popconfirm"
           >
-            <Button
-              type="text"
-              icon={<DeleteOutlined className="text-gray-400 hover:text-red-400" />}
-              className="hover:bg-gray-800"
-            />
+            <span className="cursor-pointer p-2 hover:bg-gray-800 rounded-md inline-flex items-center justify-center">
+              <DeleteOutlined className="text-gray-400 hover:text-red-400 text-base" />
+            </span>
           </Popconfirm>
         </div>
       )
