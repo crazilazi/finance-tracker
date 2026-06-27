@@ -58,6 +58,20 @@ const expensesSlice = createSlice({
         state.rawData.splice(index, 1);
       }
     },
+    deleteBulkExpenses(state, action) {
+      const indices = [...action.payload].sort((a, b) => b - a);
+      const operations = [];
+
+      indices.forEach(idx => {
+        const oldData = state.rawData[idx];
+        if (oldData) {
+          operations.push({ action: 'delete', data: oldData, index: idx });
+          state.rawData.splice(idx, 1);
+        }
+      });
+
+      state.undoStack.push({ action: 'bulk', operations });
+    },
     undoAction(state) {
       if (state.undoStack.length === 0) return;
       const last = state.undoStack.pop();
@@ -75,6 +89,8 @@ const expensesSlice = createSlice({
             state.rawData.splice(op.index, 1);
           } else if (op.action === 'update') {
             state.rawData[op.index] = op.data;
+          } else if (op.action === 'delete') {
+            state.rawData.splice(op.index, 0, op.data);
           }
         }
       }
@@ -213,6 +229,7 @@ export const {
   addExpense,
   updateExpense,
   deleteExpense,
+  deleteBulkExpenses,
   undoAction,
   propagateYearlyExpense,
   propagateRangeExpense,

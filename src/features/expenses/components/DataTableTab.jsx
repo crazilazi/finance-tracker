@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification } from 'antd';
+import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification, message } from 'antd';
 import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, SyncOutlined } from '@ant-design/icons';
 import {
   setTableFilters,
   setSort,
   deleteExpense,
+  deleteBulkExpenses,
   undoAction,
   setDataPage
 } from '../expensesSlice';
@@ -26,6 +27,20 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
   const filter = useSelector(state => state.expenses.filter);
   const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys) => setSelectedRowKeys(keys)
+  };
+
+  const handleBulkDelete = () => {
+    dispatch(deleteBulkExpenses(selectedRowKeys));
+    const count = selectedRowKeys.length;
+    setSelectedRowKeys([]);
+    message.success(`Successfully deleted ${count} selected records!`);
+  };
 
   const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
   
@@ -322,6 +337,27 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
               Reconcile Statement
             </Button>
           )}
+          {selectedRowKeys.length > 0 && (
+            <Popconfirm
+              title={`Delete ${selectedRowKeys.length} selected items?`}
+              description="Are you sure you want to delete these records?"
+              onConfirm={handleBulkDelete}
+              okText="Yes"
+              cancelText="No"
+              placement="topRight"
+            >
+              <span className="inline-flex">
+                <Button
+                  type="primary"
+                  danger
+                  icon={<DeleteOutlined />}
+                  style={{ borderRadius: 8, height: 38 }}
+                >
+                  Delete Selected ({selectedRowKeys.length})
+                </Button>
+              </span>
+            </Popconfirm>
+          )}
         </div>
       </div>
 
@@ -330,6 +366,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
         dataSource={tableData}
         columns={columns}
         rowKey="originalIndex"
+        rowSelection={rowSelection}
         pagination={{
           current: dataPage,
           pageSize: pageSize,
