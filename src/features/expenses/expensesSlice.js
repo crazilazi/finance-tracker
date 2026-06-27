@@ -1,4 +1,5 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, createSelector } from '@reduxjs/toolkit';
+import { matchSmartQuery } from '../../utils/financeEngine';
 
 const initialState = {
   rawData: [],
@@ -36,22 +37,37 @@ const expensesSlice = createSlice({
       state.loading = action.payload;
     },
     setExpenses(state, action) {
-      state.rawData = action.payload;
+      const generateUUID = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
+      state.rawData = (action.payload || []).map(d => ({ ...d, uuid: d.uuid || generateUUID() }));
     },
-    addExpense(state, action) {
-      state.rawData.push(action.payload);
-      state.undoStack.push({ action: 'create', data: action.payload, index: state.rawData.length - 1 });
-    },
-    updateExpense(state, action) {
-      const { index, data } = action.payload;
-      const oldData = state.rawData[index];
-      if (oldData) {
-        state.undoStack.push({ action: 'update', data: oldData, index });
-        state.rawData[index] = data;
+    addExpense: {
+      reducer(state, action) {
+        state.rawData.push(action.payload);
+        state.undoStack.push({ action: 'create', data: action.payload, index: state.rawData.length - 1 });
+      },
+      prepare(payload) {
+        const generateUUID = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
+        return { payload: { ...payload, uuid: payload.uuid || generateUUID() } };
       }
     },
+    updateExpense: {
+      reducer(state, action) {
+        const { index, data } = action.payload;
+        const oldData = state.rawData[index];
+        if (oldData) {
+          state.undoStack.push({ action: 'update', data: oldData, index });
+          state.rawData[index] = { 
+            ...data, 
+            uuid: data.uuid || oldData.uuid,
+            sheet: data.sheet !== undefined ? data.sheet : oldData.sheet
+          };
+        }
+      },
+      // Unfortunately prepare doesn't have access to state to get oldData.uuid.
+      // But we can ensure it in the component or we can just let the epic read from the next state!
+    },
     deleteExpense(state, action) {
-      const index = action.payload;
+      const index = typeof action.payload === 'object' ? action.payload.index : action.payload;
       const oldData = state.rawData[index];
       if (oldData) {
         state.undoStack.push({ action: 'delete', data: oldData, index });
@@ -161,7 +177,9 @@ const expensesSlice = createSlice({
           d => d.month === targetMonth && d.category.toLowerCase() === item.category.toLowerCase()
         );
 
+        const generateUUID = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
         const payload = {
+          uuid: (index >= 0 ? state.rawData[index].uuid : null) || generateUUID(),
           month: targetMonth,
           category: item.category,
           amount: parseFloat(item.amount),
@@ -244,5 +262,40 @@ export const {
   setDataPage,
   setAnalyticsResults
 } = expensesSlice.actions;
+
+// Memoized Selectors
+export const selectRawData = state => state.expenses.rawData;
+export const selectQuery = state => state.expenses.query;
+export const selectFilter = state => state.expenses.filter;
+
+export const selectFilteredTransactions = createSelector(
+  [selectRawData, selectQuery, selectFilter],
+  (rawData, query, filter) => {
+    let data = rawData;
+    if (filter && filter !== 'all') {
+      if (filter.startsWith('last')) {
+        const n = parseInt(filter.replace('last', ''));
+        const today = new Date();
+        let year = today.getFullYear();
+        let month = (today.getMonth() + 1) - (n - 1);
+        while (month <= 0) {
+          month += 12;
+          year -= 1;
+        }
+        const cutoffStr = `${year}-${String(month).padStart(2, '0')}`;
+        // Filter out future months as well when using "last N months" to keep it strictly past/present
+        const currentStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+        data = rawData.filter(d => d.month >= cutoffStr && d.month <= currentStr);
+      } else {
+        data = rawData.filter(d => d.month.startsWith(filter));
+      }
+    }
+    if (query && query.trim()) {
+      const lowerQuery = query.toLowerCase();
+      data = data.filter(d => matchSmartQuery(d, lowerQuery));
+    }
+    return data;
+  }
+);
 
 export default expensesSlice.reducer;

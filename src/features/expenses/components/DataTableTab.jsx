@@ -8,7 +8,8 @@ import {
   deleteExpense,
   deleteBulkExpenses,
   undoAction,
-  setDataPage
+  setDataPage,
+  selectFilteredTransactions
 } from '../expensesSlice';
 
 import { matchSmartQuery } from '../../../utils/financeEngine';
@@ -50,27 +51,8 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
     return months[parseInt(mo) - 1] + ' ' + y.slice(2);
   };
 
-  // Time and Query filter logic
-  const getFilteredData = () => {
-    let data = rawData;
-    if (filter !== 'all') {
-      const allMonths = [...new Set(rawData.map(d => d.month))].sort();
-      if (filter.startsWith('last')) {
-        const n = parseInt(filter.replace('last', ''));
-        const cutoffMonths = allMonths.slice(-n);
-        data = rawData.filter(d => cutoffMonths.includes(d.month));
-      } else {
-        data = rawData.filter(d => d.month.startsWith(filter));
-      }
-    }
-    if (query) {
-      data = data.filter(d => matchSmartQuery(d, query));
-    }
-    return data;
-  };
-
-  const filtered = getFilteredData();
-  const categories = [...new Set(filtered.map(d => d.category))].sort();
+  const filtered = useSelector(selectFilteredTransactions);
+  const categories = [...new Set(rawData.map(d => d.category))].sort();
   const uniqueYears = [...new Set(rawData.map(d => d.month.split('-')[0]))].sort().reverse();
 
   // Filter & Search Table Data
@@ -118,7 +100,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
 
   const handleDelete = (originalIndex) => {
     const item = rawData[originalIndex];
-    dispatch(deleteExpense(originalIndex));
+    dispatch(deleteExpense({ index: originalIndex, uuid: item?.uuid }));
     
     // Trigger undo notification toast
     const key = `delete-${Date.now()}`;

@@ -23,7 +23,7 @@ export const fetchExpensesEpic = (action$) =>
     ofType('expenses/fetchExpenses'),
     mergeMap(() => {
       return from(
-        fetch('/api/get-expenses')
+        fetch('/api/expenses', { credentials: 'same-origin' })
           .then(res => {
             if (!res.ok) throw new Error('Backend returned status ' + res.status);
             return res.json();
@@ -39,7 +39,7 @@ export const fetchExpensesEpic = (action$) =>
           throw new Error('Empty or invalid data from API');
         }),
         catchError(err => {
-          console.warn('Failed to fetch from /api/get-expenses, trying localStorage:', err);
+          console.warn('Failed to fetch from /api/expenses, trying localStorage:', err);
           const saved = localStorage.getItem('gaddi_expense_data');
           if (saved) {
             try {
@@ -76,7 +76,6 @@ export const saveExpensesEpic = (action$, state$) =>
       deleteExpense.type,
       deleteBulkExpenses.type,
       undoAction.type,
-      setExpenses.type,
       propagateYearlyExpense.type,
       propagateRangeExpense.type,
       copyMonthExpenses.type
@@ -85,29 +84,77 @@ export const saveExpensesEpic = (action$, state$) =>
     tap(([action, state]) => {
       const rawData = state.expenses.rawData;
 
-      // 1. Save to LocalStorage
+      // Local storage backup
       try {
         localStorage.setItem('gaddi_expense_data', JSON.stringify(rawData));
-      } catch (e) {
-        console.warn('Could not save to localStorage:', e);
-      }
+      } catch (e) {}
 
-      // 2. Save to JSON File via Vite endpoint
-      fetch('/api/save-expenses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rawData)
-      })
-      .then(res => res.json())
-      .then(resData => {
-        if (!resData.success) {
-          console.error('Failed to write to public/expense_data.json:', resData.error);
+      if (action.type === addExpense.type) {
+        fetch('/api/expenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(action.payload)
+        }).catch(err => console.error('Failed to create expense via REST API:', err));
+      } else if (action.type === updateExpense.type) {
+        // Reducer has already updated state.expenses.rawData!
+        // We can just grab the updated item using the index.
+        const { index, data } = action.payload;
+        const updatedItem = state.expenses.rawData[index]; 
+        
+        // If data form didn't pass UUID, we use the one from state which still has it.
+        const payloadToSave = { ...data, uuid: updatedItem ? updatedItem.uuid : (data.uuid || null) };
+
+        if (payloadToSave.uuid) {
+          fetch(`/api/expenses/${payloadToSave.uuid}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadToSave)
+          }).catch(err => console.error('Failed to update expense via REST API:', err));
         }
-      })
-      .catch(err => {
-        console.error('Error writing to public/expense_data.json:', err);
-      });
+      } else if (action.type === deleteExpense.type) {
+        // payload could be a number (index) or { index, uuid }
+        let uuid = typeof action.payload === 'object' ? action.payload.uuid : null;
+        
+        // if uuid is missing from payload, we can't reliably get it from state.rawData because the item is already deleted!
+        // but if it's missing, we fallback to bulk sync.
+        if (uuid) {
+          fetch(`/api/expenses/${uuid}`, {
+            method: 'DELETE'
+          }).catch(err => console.error('Failed to delete expense via REST API:', err));
+        } else {
+          // fallback if UI didn't pass uuid
+          fetch('/api/expenses/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rawData)
+          }).catch(err => console.error('Failed bulk sync on delete:', err));
+        }
+      } else {
+        // Bulk operations sync
+        fetch('/api/expenses/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rawData)
+        }).catch(err => console.error('Failed to sync bulk operation:', err));
+      }
     }),
+    mergeMap(() => of({ type: 'expenses/noop' }))
+  );
+
+export const analyticsEpic = (action$, state$) =>
+  action$.pipe(
+    ofType(
+      addExpense.type,
+      updateExpense.type,
+      deleteExpense.type,
+      deleteBulkExpenses.type,
+      undoAction.type,
+      setExpenses.type,
+      propagateYearlyExpense.type,
+      propagateRangeExpense.type,
+      copyMonthExpenses.type
+    ),
+    withLatestFrom(state$),
     map(([action, state]) => {
       const rawData = state.expenses.rawData;
       const anomalies = detectAnomalies(rawData);
@@ -133,7 +180,7 @@ export const checkAuthSessionEpic = (action$) =>
     ofType('expenses/checkAuthSession'),
     mergeMap(() => {
       return from(
-        fetch('/api/auth/me')
+        fetch('/api/auth/me', { credentials: 'same-origin' })
           .then(res => res.json())
       ).pipe(
         mergeMap(data => {

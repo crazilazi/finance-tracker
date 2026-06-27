@@ -117,7 +117,6 @@ export default function TopBar({ setMobileOpen, palette }) {
           value={filter}
           onChange={(val) => dispatch(setFilter(val))}
           style={{ width: 180 }}
-          popupClassName="dark-dropdown"
         >
           <Option value="all">All Time</Option>
           <Select.OptGroup label="Ranges">

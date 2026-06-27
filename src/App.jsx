@@ -1,16 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, lazy, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Button } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Button, Spin } from 'antd';
+import { PlusOutlined, LoadingOutlined } from '@ant-design/icons';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
-import DashboardTab from './features/dashboard/components/DashboardTab';
-import TrendsTab from './features/trends/components/TrendsTab';
-import AnomaliesTab from './features/anomalies/components/AnomaliesTab';
-import BreakdownTab from './features/breakdown/components/BreakdownTab';
-import InsightsTab from './features/insights/components/InsightsTab';
-import SimulatorTab from './features/simulator/components/SimulatorTab';
-import DataTableTab from './features/expenses/components/DataTableTab';
+
+const DashboardTab = lazy(() => import('./features/dashboard/components/DashboardTab'));
+const TrendsTab = lazy(() => import('./features/trends/components/TrendsTab'));
+const AnomaliesTab = lazy(() => import('./features/anomalies/components/AnomaliesTab'));
+const BreakdownTab = lazy(() => import('./features/breakdown/components/BreakdownTab'));
+const InsightsTab = lazy(() => import('./features/insights/components/InsightsTab'));
+const SimulatorTab = lazy(() => import('./features/simulator/components/SimulatorTab'));
+const DataTableTab = lazy(() => import('./features/expenses/components/DataTableTab'));
+
 import ExpenseModal from './features/expenses/components/ExpenseModal';
 import CopyMonthModal from './features/expenses/components/CopyMonthModal';
 import MissingScannerModal from './features/expenses/components/MissingScannerModal';
@@ -35,8 +37,12 @@ export default function App() {
   const [reconcileModalOpen, setReconcileModalOpen] = useState(false);
   const [editIndex, setEditIndex]   = useState(null);
 
+  const initialized = useRef(false);
   useEffect(() => {
-    dispatch({ type: 'expenses/checkAuthSession' });
+    if (!initialized.current) {
+      initialized.current = true;
+      dispatch({ type: 'expenses/checkAuthSession' });
+    }
   }, [dispatch]);
 
   // Sync hash routing changes to Redux and vice versa
@@ -67,16 +73,27 @@ export default function App() {
   };
 
   const renderActiveTab = () => {
+    let TabComponent;
     switch (currentPage) {
-      case 'dashboard':  return <DashboardTab />;
-      case 'trends':     return <TrendsTab />;
-      case 'anomalies':  return <AnomaliesTab />;
-      case 'breakdown':  return <BreakdownTab />;
-      case 'insights':   return <InsightsTab />;
-      case 'simulator':  return <SimulatorTab />;
-      case 'data':       return <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} onScanMissing={() => setScannerModalOpen(true)} onReconcile={() => setReconcileModalOpen(true)} />;
-      default:           return <DashboardTab />;
+      case 'dashboard':  TabComponent = <DashboardTab />; break;
+      case 'trends':     TabComponent = <TrendsTab />; break;
+      case 'anomalies':  TabComponent = <AnomaliesTab />; break;
+      case 'breakdown':  TabComponent = <BreakdownTab />; break;
+      case 'insights':   TabComponent = <InsightsTab />; break;
+      case 'simulator':  TabComponent = <SimulatorTab />; break;
+      case 'data':       TabComponent = <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} onScanMissing={() => setScannerModalOpen(true)} onReconcile={() => setReconcileModalOpen(true)} />; break;
+      default:           TabComponent = <DashboardTab />;
     }
+
+    return (
+      <Suspense fallback={
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: 400 }}>
+          <Spin indicator={<LoadingOutlined style={{ fontSize: 48, color: '#6366f1' }} spin />} />
+        </div>
+      }>
+        {TabComponent}
+      </Suspense>
+    );
   };
 
   if (loading) {

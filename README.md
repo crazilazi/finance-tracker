@@ -1,6 +1,6 @@
 # 💎 Finance Tracker
 
-A state-of-the-art, highly intuitive user-scoped financial analytics platform built with React, Redux-Observable, RxJS, and TailwindCSS. Features real-time financial health forecasting, OAuth 2.0 authentication, interactive chart click drill-downs, Bank Statement Excel reconciliation, yearly audit scanning, and a self-healing SQL Server / JSON dual-storage backend.
+A state-of-the-art, highly intuitive user-scoped financial analytics platform built with Next.js, React, Redux-Observable, RxJS, and TailwindCSS. Features real-time financial health forecasting, OAuth 2.0 authentication, interactive chart click drill-downs, Bank Statement Excel reconciliation, yearly audit scanning, and a self-healing SQL Server / JSON dual-storage backend.
 
 ---
 
@@ -82,17 +82,17 @@ node scripts/migrate-to-sql.js
 ## 🛠️ Running & Deploying Locally
 
 ### Development Mode
-Runs Vite dev server with hot module replacement and middleware backend API handling:
+Runs the Next.js dev server with hot module replacement and integrated API routes:
 ```bash
 npm run dev
 ```
-Open [http://localhost:8080](http://localhost:8080) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Production Build & Local Deployment
-To compile production assets and run a local production preview server with API endpoints bound to port `8080`:
+To compile production assets and run a local production server:
 ```bash
 npm run build
-npm run preview
+npm start
 ```
 
 ---

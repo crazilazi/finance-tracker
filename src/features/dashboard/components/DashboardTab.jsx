@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { setTableFilters, setCurrentPage } from '../../../features/expenses/expensesSlice';
+import { setTableFilters, setCurrentPage, selectFilteredTransactions } from '../../../features/expenses/expensesSlice';
 import { Card, Row, Col, Progress } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -9,6 +9,8 @@ import {
   CategoryScale,
   LinearScale,
   BarElement,
+  PointElement,
+  LineElement,
   Title,
   Tooltip,
   Legend,
@@ -18,7 +20,7 @@ import HealthGauge from '../../../components/ui/HealthGauge';
 import Sparkline from '../../../components/ui/Sparkline';
 import { getMonthlyTotals, pctChange, getCategoryTotals, calculateHealthScore, detectAnomalies, matchSmartQuery } from '../../../utils/financeEngine';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement);
 
 const COLORS = {
   primary: '#6366f1',
@@ -56,25 +58,8 @@ export default function DashboardTab() {
   // NOTE: healthScore/healthMetrics are computed locally from filtered data
   //       (not from Redux) so they always match the selected time range.
 
-  const getFilteredData = () => {
-    let data = rawData;
-    if (filter !== 'all') {
-      const allMonths = [...new Set(rawData.map(d => d.month))].sort();
-      if (filter.startsWith('last')) {
-        const n = parseInt(filter.replace('last', ''));
-        const cutoffMonths = allMonths.slice(-n);
-        data = rawData.filter(d => cutoffMonths.includes(d.month));
-      } else {
-        data = rawData.filter(d => d.month.startsWith(filter));
-      }
-    }
-    if (query) {
-      data = data.filter(d => matchSmartQuery(d, query));
-    }
-    return data;
-  };
-
-  const filtered       = getFilteredData();
+  // Memoized derived data
+  const filtered       = useSelector(selectFilteredTransactions);
   const months         = [...new Set(filtered.map(d => d.month))].sort();
   const monthlyTotals  = getMonthlyTotals(filtered);
 

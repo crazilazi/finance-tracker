@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
+import { selectFilteredTransactions } from '../../expenses/expensesSlice';
 import { Card, Row, Col, Select } from 'antd';
 import { Line, Bar } from 'react-chartjs-2';
 import {
@@ -35,26 +36,8 @@ export default function TrendsTab() {
   const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
 
-  // Time and Query filter logic
-  const getFilteredData = () => {
-    let data = rawData;
-    if (filter !== 'all') {
-      const allMonths = [...new Set(rawData.map(d => d.month))].sort();
-      if (filter.startsWith('last')) {
-        const n = parseInt(filter.replace('last', ''));
-        const cutoffMonths = allMonths.slice(-n);
-        data = rawData.filter(d => cutoffMonths.includes(d.month));
-      } else {
-        data = rawData.filter(d => d.month.startsWith(filter));
-      }
-    }
-    if (query) {
-      data = data.filter(d => matchSmartQuery(d, query));
-    }
-    return data;
-  };
-
-  const filtered = getFilteredData();
+  // Memoized derived data
+  const filtered = useSelector(selectFilteredTransactions);
   const months = [...new Set(filtered.map(d => d.month))].sort();
   const categories = [...new Set(rawData.map(d => d.category))].sort();
 
