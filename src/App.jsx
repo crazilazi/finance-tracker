@@ -15,6 +15,7 @@ import ExpenseModal from './features/expenses/components/ExpenseModal';
 import CopyMonthModal from './features/expenses/components/CopyMonthModal';
 import Login from './components/Login';
 import { DARK, LIGHT } from './components/ThemeProvider';
+import { setCurrentPage } from './features/expenses/expensesSlice';
 
 export default function App() {
   const dispatch    = useDispatch();
