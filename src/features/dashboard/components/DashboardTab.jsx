@@ -90,8 +90,12 @@ export default function DashboardTab() {
   };
 
   // Compute key stats
-  const incomeData = filtered.filter(d => d.type === 'Income');
-  const totalIncome = incomeData.reduce((sum, d) => sum + d.amount, 0);
+  // If a month has no Income, fallback to the total outflow of that month
+  const totalIncome = months.reduce((sum, m) => {
+    const inc = monthlyTotals[m]?.Income || 0;
+    const tot = monthlyTotals[m]?.total || 0;
+    return sum + (inc > 0 ? inc : tot);
+  }, 0);
 
   const totalSpent = filtered.filter(d => d.type === 'Expense' || d.type === 'EMI').reduce((sum, d) => sum + d.amount, 0);
   
@@ -107,12 +111,19 @@ export default function DashboardTab() {
   const netBalance = totalIncome - (totalSpent + totalSaving);
 
   // Sparkline data
-  const sparklineIncome = months.map(m => monthlyTotals[m]?.Income || 0);
+  const sparklineIncome = months.map(m => {
+    const inc = monthlyTotals[m]?.Income || 0;
+    return inc > 0 ? inc : (monthlyTotals[m]?.total || 0);
+  });
   const sparklineTotal = months.map(m => monthlyTotals[m]?.total || 0);
   const sparklineExpense = months.map(m => monthlyTotals[m]?.Expense || 0);
   const sparklineEmi = months.map(m => monthlyTotals[m]?.EMI || 0);
   const sparklineSaving = months.map(m => monthlyTotals[m]?.Saving || 0);
-  const sparklineNet = months.map(m => (monthlyTotals[m]?.Income || 0) - (monthlyTotals[m]?.total || 0));
+  const sparklineNet = months.map(m => {
+    const inc = monthlyTotals[m]?.Income || 0;
+    const tot = monthlyTotals[m]?.total || 0;
+    return inc > 0 ? (inc - tot) : 0;
+  });
 
   const getMomTrend = (currArr) => {
     if (currArr.length < 2) return null;
@@ -141,7 +152,10 @@ export default function DashboardTab() {
     datasets: [
       {
         label: 'Total Income',
-        data: months.map(m => monthlyTotals[m]?.Income || 0),
+        data: months.map(m => {
+          const inc = monthlyTotals[m]?.Income || 0;
+          return inc > 0 ? inc : (monthlyTotals[m]?.total || 0);
+        }),
         type: 'line',
         borderColor: '#10b981',
         borderWidth: 3,
