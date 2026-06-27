@@ -338,6 +338,7 @@ export default function ExpenseModal({ open, onClose, editIndex }) {
                   <Option value="Expense">💸 Expense</Option>
                   <Option value="EMI">🏦 EMI</Option>
                   <Option value="Saving">🐷 Saving</Option>
+                  <Option value="Income">🟢 Income</Option>
                 </Select>
               </Form.Item>
             </Col>

@@ -90,7 +90,10 @@ export default function DashboardTab() {
   };
 
   // Compute key stats
-  const totalSpent = filtered.reduce((sum, d) => sum + d.amount, 0);
+  const incomeData = filtered.filter(d => d.type === 'Income');
+  const totalIncome = incomeData.reduce((sum, d) => sum + d.amount, 0);
+
+  const totalSpent = filtered.filter(d => d.type === 'Expense' || d.type === 'EMI').reduce((sum, d) => sum + d.amount, 0);
   
   const expenseData = filtered.filter(d => d.type === 'Expense');
   const avgExpense = months.length ? expenseData.reduce((sum, d) => sum + d.amount, 0) / months.length : 0;
@@ -101,11 +104,15 @@ export default function DashboardTab() {
   const savingData = filtered.filter(d => d.type === 'Saving');
   const totalSaving = savingData.reduce((sum, d) => sum + d.amount, 0);
 
+  const netBalance = totalIncome - (totalSpent + totalSaving);
+
   // Sparkline data
+  const sparklineIncome = months.map(m => monthlyTotals[m]?.Income || 0);
   const sparklineTotal = months.map(m => monthlyTotals[m]?.total || 0);
   const sparklineExpense = months.map(m => monthlyTotals[m]?.Expense || 0);
   const sparklineEmi = months.map(m => monthlyTotals[m]?.EMI || 0);
   const sparklineSaving = months.map(m => monthlyTotals[m]?.Saving || 0);
+  const sparklineNet = months.map(m => (monthlyTotals[m]?.Income || 0) - (monthlyTotals[m]?.total || 0));
 
   const getMomTrend = (currArr) => {
     if (currArr.length < 2) return null;
@@ -132,9 +139,20 @@ export default function DashboardTab() {
       return names[parseInt(mo) - 1] + ' ' + y.slice(2);
     }),
     datasets: [
-      { label: 'Expenses', data: months.map(m => monthlyTotals[m]?.Expense || 0), backgroundColor: COLORS.red },
-      { label: 'EMIs', data: months.map(m => monthlyTotals[m]?.EMI || 0), backgroundColor: COLORS.blue },
-      { label: 'Savings', data: months.map(m => monthlyTotals[m]?.Saving || 0), backgroundColor: COLORS.green }
+      {
+        label: 'Total Income',
+        data: months.map(m => monthlyTotals[m]?.Income || 0),
+        type: 'line',
+        borderColor: '#10b981',
+        borderWidth: 3,
+        fill: false,
+        pointBackgroundColor: '#10b981',
+        pointRadius: 4,
+        order: 1
+      },
+      { label: 'Expenses', data: months.map(m => monthlyTotals[m]?.Expense || 0), backgroundColor: COLORS.red, order: 2 },
+      { label: 'EMIs', data: months.map(m => monthlyTotals[m]?.EMI || 0), backgroundColor: COLORS.blue, order: 2 },
+      { label: 'Savings', data: months.map(m => monthlyTotals[m]?.Saving || 0), backgroundColor: COLORS.green, order: 2 }
     ]
   };
 
@@ -229,14 +247,34 @@ export default function DashboardTab() {
           <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
             <div className="flex justify-between items-start">
               <div>
-                <div className="text-gray-400 font-semibold text-xs mb-1">Total Outflow</div>
-                <div className="text-2xl font-black">{formatINR(totalSpent)}</div>
+                <div className="text-gray-400 font-semibold text-xs mb-1">Total Income</div>
+                <div className="text-2xl font-black text-green-400">{formatINR(totalIncome)}</div>
               </div>
-              <div className="bg-indigo-500/10 p-2 rounded-xl text-lg text-indigo-400 leading-none">💰</div>
+              <div className="bg-green-500/10 p-2 rounded-xl text-lg text-green-400 leading-none">💵</div>
+            </div>
+            <div className="flex justify-between items-center mt-4">
+              {getMomTrend(sparklineIncome)}
+              <Sparkline data={sparklineIncome} color={COLORS.green} />
+            </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+              <span onClick={() => handleCardClick('Income')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
+                View Details ➜
+              </span>
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-gray-400 font-semibold text-xs mb-1">Total Outflow</div>
+                <div className="text-2xl font-black text-red-400">{formatINR(totalSpent)}</div>
+              </div>
+              <div className="bg-red-500/10 p-2 rounded-xl text-lg text-red-400 leading-none">💰</div>
             </div>
             <div className="flex justify-between items-center mt-4">
               {getMomTrend(sparklineTotal)}
-              <Sparkline data={sparklineTotal} color={COLORS.primary} />
+              <Sparkline data={sparklineTotal} color={COLORS.red} />
             </div>
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
               <span onClick={() => handleCardClick('all')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
@@ -249,57 +287,37 @@ export default function DashboardTab() {
           <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
             <div className="flex justify-between items-start">
               <div>
-                <div className="text-gray-400 font-semibold text-xs mb-1">Monthly Avg Expense</div>
-                <div className="text-2xl font-black">{formatINR(avgExpense)}</div>
-              </div>
-              <div className="bg-red-500/10 p-2 rounded-xl text-lg text-red-400 leading-none">🛒</div>
-            </div>
-            <div className="flex justify-between items-center mt-4">
-              {getMomTrend(sparklineExpense)}
-              <Sparkline data={sparklineExpense} color={COLORS.red} />
-            </div>
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-              <span onClick={() => handleCardClick('Expense')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
-                View Details ➜
-              </span>
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="text-gray-400 font-semibold text-xs mb-1">Monthly Avg EMI</div>
-                <div className="text-2xl font-black">{formatINR(avgEmi)}</div>
-              </div>
-              <div className="bg-blue-500/10 p-2 rounded-xl text-lg text-blue-400 leading-none">🏦</div>
-            </div>
-            <div className="flex justify-between items-center mt-4">
-              {getMomTrend(sparklineEmi)}
-              <Sparkline data={sparklineEmi} color={COLORS.blue} />
-            </div>
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-              <span onClick={() => handleCardClick('EMI')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
-                View Details ➜
-              </span>
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-            <div className="flex justify-between items-start">
-              <div>
                 <div className="text-gray-400 font-semibold text-xs mb-1">Total Savings</div>
-                <div className="text-2xl font-black">{formatINR(totalSaving)}</div>
+                <div className="text-2xl font-black text-blue-400">{formatINR(totalSaving)}</div>
               </div>
-              <div className="bg-green-500/10 p-2 rounded-xl text-lg text-green-400 leading-none">🐷</div>
+              <div className="bg-blue-500/10 p-2 rounded-xl text-lg text-blue-400 leading-none">🐷</div>
             </div>
             <div className="flex justify-between items-center mt-4">
               {getMomTrend(sparklineSaving)}
-              <Sparkline data={sparklineSaving} color={COLORS.green} />
+              <Sparkline data={sparklineSaving} color={COLORS.primary} />
             </div>
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
               <span onClick={() => handleCardClick('Saving')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
+                View Details ➜
+              </span>
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-gray-400 font-semibold text-xs mb-1">Net Balance</div>
+                <div className={`text-2xl font-black ${netBalance >= 0 ? 'text-cyan-400' : 'text-orange-500'}`}>{formatINR(netBalance)}</div>
+              </div>
+              <div className="bg-cyan-500/10 p-2 rounded-xl text-lg text-cyan-400 leading-none">⚖️</div>
+            </div>
+            <div className="flex justify-between items-center mt-4">
+              {getMomTrend(sparklineNet)}
+              <Sparkline data={sparklineNet} color={COLORS.cyan} />
+            </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+              <span onClick={() => handleCardClick('all')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
                 View Details ➜
               </span>
             </div>

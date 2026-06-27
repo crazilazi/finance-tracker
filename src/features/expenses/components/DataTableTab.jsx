@@ -152,7 +152,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
       sorter: true,
       sortOrder: sortCol === 'type' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null,
       render: (t) => {
-        const colors = { Expense: 'red', EMI: 'blue', Saving: 'green' };
+        const colors = { Expense: 'red', EMI: 'blue', Saving: 'green', Income: 'emerald' };
         return <Tag color={colors[t] || 'default'}>{t}</Tag>;
       }
     },
@@ -228,6 +228,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
             <Option value="Expense">Expenses</Option>
             <Option value="EMI">EMIs</Option>
             <Option value="Saving">Savings</Option>
+            <Option value="Income">Income</Option>
           </Select>
           <Select
             value={tableFilters.category}

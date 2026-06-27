@@ -11,8 +11,10 @@ const monthNames = {
 
 export function guessType(category) {
   const cat = category.toLowerCase();
+  const incomeKeywords = ['salary', 'income', 'bonus', 'dividend', 'incoming', 'rent received', 'interest'];
   const emiKeywords = ['loan', 'emi', 'lic', 'insurance'];
   const savingKeywords = ['saving', 'mf saving', 'land saving', 'bhima'];
+  if (incomeKeywords.some(k => cat.includes(k))) return 'Income';
   if (emiKeywords.some(k => cat.includes(k))) return 'EMI';
   if (savingKeywords.some(k => cat.includes(k))) return 'Saving';
   return 'Expense';

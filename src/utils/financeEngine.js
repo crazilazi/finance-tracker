@@ -18,9 +18,14 @@ export function pctChange(curr, prev) {
 export function getMonthlyTotals(data) {
   const totals = {};
   data.forEach(d => {
-    if (!totals[d.month]) totals[d.month] = { Expense: 0, EMI: 0, Saving: 0, total: 0 };
+    if (!totals[d.month]) totals[d.month] = { Expense: 0, EMI: 0, Saving: 0, Income: 0, total: 0 };
+    if (totals[d.month][d.type] === undefined) {
+      totals[d.month][d.type] = 0;
+    }
     totals[d.month][d.type] += d.amount;
-    totals[d.month].total += d.amount;
+    if (d.type !== 'Income') {
+      totals[d.month].total += d.amount;
+    }
   });
   return totals;
 }
