@@ -12,7 +12,8 @@ import {
   deleteExpense,
   undoAction,
   propagateYearlyExpense,
-  propagateRangeExpense
+  propagateRangeExpense,
+  copyMonthExpenses
 } from './expensesSlice';
 import { detectAnomalies, generateAlerts, calculateHealthScore } from '../../utils/financeEngine';
 
@@ -75,7 +76,8 @@ export const saveExpensesEpic = (action$, state$) =>
       undoAction.type,
       setExpenses.type,
       propagateYearlyExpense.type,
-      propagateRangeExpense.type
+      propagateRangeExpense.type,
+      copyMonthExpenses.type
     ),
     withLatestFrom(state$),
     tap(([action, state]) => {
