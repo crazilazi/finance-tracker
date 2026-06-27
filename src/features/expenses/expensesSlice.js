@@ -136,6 +136,35 @@ const expensesSlice = createSlice({
 
       state.undoStack.push({ action: 'bulk', operations });
     },
+    copyMonthExpenses(state, action) {
+      const { targetMonth, items } = action.payload;
+      const operations = [];
+
+      items.forEach(item => {
+        const index = state.rawData.findIndex(
+          d => d.month === targetMonth && d.category.toLowerCase() === item.category.toLowerCase()
+        );
+
+        const payload = {
+          month: targetMonth,
+          category: item.category,
+          amount: parseFloat(item.amount),
+          type: item.type,
+          sheet: item.sheet || null
+        };
+
+        if (index >= 0) {
+          const oldData = state.rawData[index];
+          operations.push({ action: 'update', data: oldData, index });
+          state.rawData[index] = payload;
+        } else {
+          state.rawData.push(payload);
+          operations.push({ action: 'create', data: payload, index: state.rawData.length - 1 });
+        }
+      });
+
+      state.undoStack.push({ action: 'bulk', operations });
+    },
     setTheme(state, action) {
       state.theme = action.payload;
     },
@@ -187,6 +216,7 @@ export const {
   undoAction,
   propagateYearlyExpense,
   propagateRangeExpense,
+  copyMonthExpenses,
   setTheme,
   toggleHideAmounts,
   setCurrentPage,

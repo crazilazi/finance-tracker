@@ -12,6 +12,7 @@ import InsightsTab from './features/insights/components/InsightsTab';
 import SimulatorTab from './features/simulator/components/SimulatorTab';
 import DataTableTab from './features/expenses/components/DataTableTab';
 import ExpenseModal from './features/expenses/components/ExpenseModal';
+import CopyMonthModal from './features/expenses/components/CopyMonthModal';
 import Login from './components/Login';
 import { DARK, LIGHT } from './components/ThemeProvider';
 
@@ -26,6 +27,7 @@ export default function App() {
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [modalOpen, setModalOpen]   = useState(false);
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [editIndex, setEditIndex]   = useState(null);
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function App() {
       case 'breakdown':  return <BreakdownTab />;
       case 'insights':   return <InsightsTab />;
       case 'simulator':  return <SimulatorTab />;
-      case 'data':       return <DataTableTab onEdit={handleEdit} />;
+      case 'data':       return <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} />;
       default:           return <DashboardTab />;
     }
   };
@@ -148,6 +150,12 @@ export default function App() {
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditIndex(null); }}
         editIndex={editIndex}
+      />
+
+      {/* ── Copy Month Template modal ──────────────────────────── */}
+      <CopyMonthModal
+        open={copyModalOpen}
+        onClose={() => setCopyModalOpen(false)}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification } from 'antd';
-import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined } from '@ant-design/icons';
+import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined } from '@ant-design/icons';
 import {
   setTableFilters,
   setSort,
@@ -14,7 +14,7 @@ import { matchSmartQuery } from '../../../utils/financeEngine';
 
 const { Option } = Select;
 
-export default function DataTableTab({ onEdit }) {
+export default function DataTableTab({ onEdit, onCopyTemplate }) {
   const dispatch = useDispatch();
   const rawData = useSelector(state => state.expenses.rawData);
   const tableFilters = useSelector(state => state.expenses.tableFilters);
@@ -26,6 +26,9 @@ export default function DataTableTab({ onEdit }) {
   const filter = useSelector(state => state.expenses.filter);
   const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+
+  const [selectedYear, setSelectedYear] = useState('all');
+  const [selectedMonth, setSelectedMonth] = useState('all');
 
   const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
   
@@ -56,9 +59,17 @@ export default function DataTableTab({ onEdit }) {
 
   const filtered = getFilteredData();
   const categories = [...new Set(filtered.map(d => d.category))].sort();
+  const uniqueYears = [...new Set(rawData.map(d => d.month.split('-')[0]))].sort().reverse();
 
   // Filter & Search Table Data
   let tableData = filtered.map((d, index) => ({ ...d, originalIndex: index }));
+
+  if (selectedYear !== 'all') {
+    tableData = tableData.filter(d => d.month.startsWith(selectedYear));
+  }
+  if (selectedMonth !== 'all') {
+    tableData = tableData.filter(d => d.month.endsWith('-' + selectedMonth));
+  }
 
   if (tableFilters.type !== 'all') {
     tableData = tableData.filter(d => d.type === tableFilters.type);
@@ -236,6 +247,52 @@ export default function DataTableTab({ onEdit }) {
               <Option key={c} value={c}>{c}</Option>
             ))}
           </Select>
+          <Select
+            value={selectedYear}
+            onChange={(val) => setSelectedYear(val)}
+            className="w-full sm:w-28"
+            popupClassName="dark-dropdown"
+          >
+            <Option value="all">All Years</Option>
+            {uniqueYears.map(yr => (
+              <Option key={yr} value={yr}>{yr}</Option>
+            ))}
+          </Select>
+          <Select
+            value={selectedMonth}
+            onChange={(val) => setSelectedMonth(val)}
+            className="w-full sm:w-36"
+            popupClassName="dark-dropdown"
+          >
+            <Option value="all">All Months</Option>
+            <Option value="01">January</Option>
+            <Option value="02">February</Option>
+            <Option value="03">March</Option>
+            <Option value="04">April</Option>
+            <Option value="05">May</Option>
+            <Option value="06">June</Option>
+            <Option value="07">July</Option>
+            <Option value="08">August</Option>
+            <Option value="09">September</Option>
+            <Option value="10">October</Option>
+            <Option value="11">November</Option>
+            <Option value="12">December</Option>
+          </Select>
+          {onCopyTemplate && (
+            <Button
+              type="primary"
+              icon={<CopyOutlined />}
+              onClick={onCopyTemplate}
+              style={{
+                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                border: 'none',
+                borderRadius: 8,
+                height: 38
+              }}
+            >
+              Copy Month Template
+            </Button>
+          )}
         </div>
       </div>
 
