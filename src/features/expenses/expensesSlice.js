@@ -7,7 +7,7 @@ const initialState = {
   filter: 'all',
   query: '', // Global smart query string
   hideAmounts: false, // Privacy mode
-  tableFilters: { search: '', type: 'all', category: 'all' },
+  tableFilters: { search: '', type: 'all', category: 'all', year: 'all', month: 'all' },
   sortCol: 'month',
   sortDir: 'desc',
   dataPage: 1,

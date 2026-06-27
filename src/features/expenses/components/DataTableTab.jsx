@@ -27,9 +27,6 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
   const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
 
-  const [selectedYear, setSelectedYear] = useState('all');
-  const [selectedMonth, setSelectedMonth] = useState('all');
-
   const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
   
   const formatMonth = (m) => {
@@ -67,11 +64,11 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
     return { ...d, originalIndex };
   });
 
-  if (selectedYear !== 'all') {
-    tableData = tableData.filter(d => d.month.startsWith(selectedYear));
+  if (tableFilters.year !== 'all') {
+    tableData = tableData.filter(d => d.month.startsWith(tableFilters.year));
   }
-  if (selectedMonth !== 'all') {
-    tableData = tableData.filter(d => d.month.endsWith('-' + selectedMonth));
+  if (tableFilters.month !== 'all') {
+    tableData = tableData.filter(d => d.month.endsWith('-' + tableFilters.month));
   }
 
   if (tableFilters.type !== 'all') {
@@ -251,8 +248,8 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
             ))}
           </Select>
           <Select
-            value={selectedYear}
-            onChange={(val) => setSelectedYear(val)}
+            value={tableFilters.year}
+            onChange={(val) => dispatch(setTableFilters({ year: val }))}
             className="w-full sm:w-28"
             popupClassName="dark-dropdown"
           >
@@ -262,8 +259,8 @@ export default function DataTableTab({ onEdit, onCopyTemplate }) {
             ))}
           </Select>
           <Select
-            value={selectedMonth}
-            onChange={(val) => setSelectedMonth(val)}
+            value={tableFilters.month}
+            onChange={(val) => dispatch(setTableFilters({ month: val }))}
             className="w-full sm:w-36"
             popupClassName="dark-dropdown"
           >

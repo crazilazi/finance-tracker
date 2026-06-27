@@ -1,5 +1,6 @@
 import React from 'react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
+import { setTableFilters, setCurrentPage } from '../../../features/expenses/expensesSlice';
 import { Card, Row, Col, Progress } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -35,10 +36,23 @@ const COLORS = {
 };
 
 export default function DashboardTab() {
+  const dispatch = useDispatch();
   const rawData = useSelector(state => state.expenses.rawData);
-  const filter  = useSelector(state => state.expenses.filter);
-  const query   = useSelector(state => state.expenses.query);
+  const theme = useSelector(state => state.expenses.theme);
+  const filter = useSelector(state => state.expenses.filter);
+  const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+
+  const handleCardClick = (type) => {
+    dispatch(setTableFilters({
+      type,
+      search: '',
+      category: 'all',
+      year: 'all',
+      month: 'all'
+    }));
+    dispatch(setCurrentPage('data'));
+  };
   // NOTE: healthScore/healthMetrics are computed locally from filtered data
   //       (not from Redux) so they always match the selected time range.
 
@@ -135,6 +149,29 @@ export default function DashboardTab() {
         }
       }
     },
+    onClick: (event, elements, chart) => {
+      if (elements && elements.length > 0) {
+        const elementIndex = elements[0].index;
+        const rawLabel = chart.data.labels[elementIndex]; // e.g. "Jun 26"
+        const monthsMap = {
+          Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+          Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+        };
+        const [moName, yrShort] = rawLabel.split(' ');
+        const year = '20' + yrShort;
+        const monthNum = monthsMap[moName];
+        if (year && monthNum) {
+          dispatch(setTableFilters({
+            year,
+            month: monthNum,
+            type: 'all',
+            category: 'all',
+            search: ''
+          }));
+          dispatch(setCurrentPage('data'));
+        }
+      }
+    },
     scales: {
       x: { stacked: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#9ca3af', font: { family: 'Inter', size: 10 } } },
       y: { stacked: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#9ca3af', font: { family: 'Inter', size: 10 }, callback: (val) => hideAmounts ? '•••••' : val } }
@@ -165,6 +202,20 @@ export default function DashboardTab() {
           label: (ctx) => hideAmounts ? `${ctx.label}: ₹•••••` : `${ctx.label}: ₹${Math.round(ctx.raw).toLocaleString('en-IN')}`
         }
       }
+    },
+    onClick: (event, elements, chart) => {
+      if (elements && elements.length > 0) {
+        const elementIndex = elements[0].index;
+        const category = chart.data.labels[elementIndex];
+        dispatch(setTableFilters({
+          category,
+          type: 'all',
+          search: '',
+          year: 'all',
+          month: 'all'
+        }));
+        dispatch(setCurrentPage('data'));
+      }
     }
   };
 
@@ -187,6 +238,11 @@ export default function DashboardTab() {
               {getMomTrend(sparklineTotal)}
               <Sparkline data={sparklineTotal} color={COLORS.primary} />
             </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+              <span onClick={() => handleCardClick('all')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
+                View Details ➜
+              </span>
+            </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} xl={6}>
@@ -201,6 +257,11 @@ export default function DashboardTab() {
             <div className="flex justify-between items-center mt-4">
               {getMomTrend(sparklineExpense)}
               <Sparkline data={sparklineExpense} color={COLORS.red} />
+            </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+              <span onClick={() => handleCardClick('Expense')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
+                View Details ➜
+              </span>
             </div>
           </Card>
         </Col>
@@ -217,6 +278,11 @@ export default function DashboardTab() {
               {getMomTrend(sparklineEmi)}
               <Sparkline data={sparklineEmi} color={COLORS.blue} />
             </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+              <span onClick={() => handleCardClick('EMI')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
+                View Details ➜
+              </span>
+            </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} xl={6}>
@@ -231,6 +297,11 @@ export default function DashboardTab() {
             <div className="flex justify-between items-center mt-4">
               {getMomTrend(sparklineSaving)}
               <Sparkline data={sparklineSaving} color={COLORS.green} />
+            </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+              <span onClick={() => handleCardClick('Saving')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
+                View Details ➜
+              </span>
             </div>
           </Card>
         </Col>

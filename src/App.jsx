@@ -34,6 +34,23 @@ export default function App() {
     dispatch({ type: 'expenses/checkAuthSession' });
   }, [dispatch]);
 
+  // Sync hash routing changes to Redux and vice versa
+  useEffect(() => {
+    const handleHashChange = () => {
+      const page = window.location.hash.replace('#/', '') || 'dashboard';
+      dispatch(setCurrentPage(page));
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    handleHashChange();
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (currentPage && window.location.hash !== `#/${currentPage}`) {
+      window.location.hash = `/${currentPage}`;
+    }
+  }, [currentPage]);
+
   const handleEdit = (index) => {
     setEditIndex(index);
     setModalOpen(true);
