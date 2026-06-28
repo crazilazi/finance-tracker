@@ -177,7 +177,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
             value={tableFilters.type}
             onChange={(val) => dispatch(setTableFilters({ type: val }))}
             className="w-full sm:w-36"
-            popupClassName="dark-dropdown"
+            classNames={{ popup: { root: "dark-dropdown" } }}
           >
             <Option value="all">All Types</Option>
             <Option value="Expense">Expenses</Option>
@@ -189,7 +189,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
             value={tableFilters.category}
             onChange={(val) => dispatch(setTableFilters({ category: val }))}
             className="w-full sm:w-44"
-            popupClassName="dark-dropdown"
+            classNames={{ popup: { root: "dark-dropdown" } }}
             showSearch
             filterOption={(input, option) =>
               (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
@@ -204,7 +204,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
             value={tableFilters.year}
             onChange={(val) => dispatch(setTableFilters({ year: val }))}
             className="w-full sm:w-28"
-            popupClassName="dark-dropdown"
+            classNames={{ popup: { root: "dark-dropdown" } }}
           >
             <Option value="all">All Years</Option>
             {allYears.map(yr => (
@@ -215,7 +215,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
             value={tableFilters.month}
             onChange={(val) => dispatch(setTableFilters({ month: val }))}
             className="w-full sm:w-36"
-            popupClassName="dark-dropdown"
+            classNames={{ popup: { root: "dark-dropdown" } }}
           >
             <Option value="all">All Months</Option>
             <Option value="01">January</Option>

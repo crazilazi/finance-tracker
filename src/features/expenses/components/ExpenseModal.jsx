@@ -300,7 +300,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
                     option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
                   }
                   onChange={(val) => handleCategoryChange(val)}
-                  popupClassName="dark-dropdown"
+                  classNames={{ popup: { root: "dark-dropdown" } }}
                 />
               </Form.Item>
             </Col>
@@ -310,7 +310,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
                 label={<span className="text-gray-400 font-bold text-xs">Type</span>}
                 rules={[{ required: true }]}
               >
-                <Select popupClassName="dark-dropdown">
+                <Select classNames={{ popup: { root: "dark-dropdown" } }}>
                   <Option value="Expense">💸 Expense</Option>
                   <Option value="EMI">🏦 EMI</Option>
                   <Option value="Saving">🐷 Saving</Option>

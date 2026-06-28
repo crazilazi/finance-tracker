@@ -39,7 +39,7 @@ export default function Login() {
         textAlign: 'center',
         padding: '32px 16px',
         boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.5)',
-      }} bodyStyle={{ padding: 0 }}>
+      }} styles={{ body: {{ padding: 0 } }}}>
         {/* Brand Logo */}
         <div style={{
           width: 64,

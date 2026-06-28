@@ -144,7 +144,7 @@ export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate 
               value={selectedYear}
               onChange={val => setSelectedYear(val)}
               style={{ width: 120 }}
-              popupClassName={isDark ? 'dark-dropdown' : ''}
+              classNames={{ popup: { root: isDark ? 'dark-dropdown' : '' } }}
             >
               {years.map(y => (
                 <Option key={y} value={y}>{y}</Option>

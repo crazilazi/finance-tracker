@@ -12,9 +12,9 @@ import {
   Title,
   Tooltip,
   Legend
-} from 'chart.js';
+, Filler } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
 
 const { Option } = Select;
 
@@ -143,7 +143,7 @@ export default function TrendsTab() {
               value={selectedCategory}
               onChange={setSelectedCategory}
               className="w-56"
-              popupClassName="dark-dropdown"
+              classNames={{ popup: { root: "dark-dropdown" } }}
             >
               <Option value="all">All Splits (Expense/EMI/Saving)</Option>
               {allCategories.map(c => (

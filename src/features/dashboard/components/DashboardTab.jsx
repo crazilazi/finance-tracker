@@ -15,12 +15,12 @@ import {
   Tooltip,
   Legend,
   ArcElement
-} from 'chart.js';
+, Filler } from 'chart.js';
 import HealthGauge from '../../../components/ui/HealthGauge';
 import Sparkline from '../../../components/ui/Sparkline';
 import { pctChange } from '../../../utils/financeEngine';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement);
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement, Filler);
 
 const COLORS = {
   primary: '#6366f1',
@@ -315,28 +315,28 @@ export default function DashboardTab() {
                   <span>Savings Rate (Benchmark: 15%+)</span>
                   <span className="text-green-400 font-bold">{healthMetrics.savingsRate}%</span>
                 </div>
-                <Progress percent={Math.min(100, (healthMetrics.savingsRate / 15) * 100)} showInfo={false} strokeColor={COLORS.green} trailColor="rgba(255,255,255,0.05)" />
+                <Progress percent={Math.min(100, (healthMetrics.savingsRate / 15) * 100)} showInfo={false} strokeColor={COLORS.green} railColor="rgba(255,255,255,0.05)" />
               </div>
               <div>
                 <div className="flex justify-between text-xs font-semibold text-gray-400 mb-1">
                   <span>EMI Burden Ratio (Target: Under 30%)</span>
                   <span className={`font-bold ${healthMetrics.emiBurden > 30 ? 'text-red-400' : 'text-blue-400'}`}>{healthMetrics.emiBurden}%</span>
                 </div>
-                <Progress percent={Math.min(100, healthMetrics.emiBurden)} showInfo={false} strokeColor={healthMetrics.emiBurden > 30 ? COLORS.red : COLORS.blue} trailColor="rgba(255,255,255,0.05)" />
+                <Progress percent={Math.min(100, healthMetrics.emiBurden)} showInfo={false} strokeColor={healthMetrics.emiBurden > 30 ? COLORS.red : COLORS.blue} railColor="rgba(255,255,255,0.05)" />
               </div>
               <div>
                 <div className="flex justify-between text-xs font-semibold text-gray-400 mb-1">
                   <span>Spending Stability Index</span>
                   <span className="text-indigo-400 font-bold">{healthMetrics.stability}%</span>
                 </div>
-                <Progress percent={healthMetrics.stability} showInfo={false} strokeColor={COLORS.primary} trailColor="rgba(255,255,255,0.05)" />
+                <Progress percent={healthMetrics.stability} showInfo={false} strokeColor={COLORS.primary} railColor="rgba(255,255,255,0.05)" />
               </div>
               <div>
                 <div className="flex justify-between text-xs font-semibold text-gray-400 mb-1">
                   <span>Anomaly Safety Score</span>
                   <span className="text-yellow-400 font-bold">{healthMetrics.anomalyScore}%</span>
                 </div>
-                <Progress percent={healthMetrics.anomalyScore} showInfo={false} strokeColor={COLORS.yellow} trailColor="rgba(255,255,255,0.05)" />
+                <Progress percent={healthMetrics.anomalyScore} showInfo={false} strokeColor={COLORS.yellow} railColor="rgba(255,255,255,0.05)" />
               </div>
             </div>
           </Col>

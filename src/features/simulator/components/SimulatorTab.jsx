@@ -254,7 +254,7 @@ export default function SimulatorTab() {
                   value={simSource}
                   onChange={(val) => handleChange('simSource', val)}
                   className="w-full"
-                  popupClassName="dark-dropdown"
+                  classNames={{ popup: { root: "dark-dropdown" } }}
                 >
                   <Option value="savings">🐷 100% of Monthly Savings</Option>
                   <Option value="trim">✂️ Trim Monthly Expenses</Option>
@@ -307,7 +307,7 @@ export default function SimulatorTab() {
                   value={simFund}
                   onChange={(val) => handleChange('simFund', val)}
                   className="w-full"
-                  popupClassName="dark-dropdown"
+                  classNames={{ popup: { root: "dark-dropdown" } }}
                 >
                   <Option value="largecap">📈 Equity Large Cap (12% p.a.)</Option>
                   <Option value="midcap">🚀 Equity Mid/Small Cap (15% p.a.)</Option>
@@ -342,7 +342,7 @@ export default function SimulatorTab() {
                   value={simProjectYrs}
                   onChange={(val) => handleChange('simProjectYrs', val)}
                   className="w-full"
-                  popupClassName="dark-dropdown"
+                  classNames={{ popup: { root: "dark-dropdown" } }}
                 >
                   <Option value={0}>None (Historical only — 26 months)</Option>
                   <Option value={5}>Project 5 Years</Option>
@@ -406,45 +406,49 @@ export default function SimulatorTab() {
       </Row>
 
       {/* Collapse detailed table */}
-      <Collapse className="bg-dark-card border-dark-border shadow-xl rounded-xl overflow-hidden mt-2">
-        <Panel
-          header={<span className="text-xs font-bold text-gray-200">📋 Click to View Month-by-Month Growth Details</span>}
-          key="1"
-          className="border-none bg-dark-card"
-        >
-          <div className="overflow-x-auto max-h-[300px] overflow-y-auto pr-2">
-            <table className="min-w-full text-left text-xs font-medium border-collapse text-gray-300">
-              <thead>
-                <tr className="border-b border-dark-border text-gray-500 font-bold uppercase tracking-wider text-[10px]">
-                  <th className="py-2 px-3">Month</th>
-                  <th className="py-2 px-3">SIP Amount</th>
-                  <th className="py-2 px-3">Interest Gained</th>
-                  <th className="py-2 px-3">Cumulative Principal</th>
-                  <th className="py-2 px-3">Cumulative Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.details.map((d, idx) => (
-                  <tr
-                    key={idx}
-                    className={`border-b border-dark-border/40 hover:bg-white/5 transition-colors ${
-                      d.isProjection ? 'text-gray-500 italic' : ''
-                    }`}
-                  >
-                    <td className="py-2.5 px-3">
-                      {formatMonth(d.month)} {d.isProjection && '(Proj)'}
-                    </td>
-                    <td className="py-2.5 px-3">{formatINR(d.sip)}</td>
-                    <td className="py-2.5 px-3 text-green-400/80">{formatINR(d.interest)}</td>
-                    <td className="py-2.5 px-3">{formatINR(d.cumulativePrincipal)}</td>
-                    <td className="py-2.5 px-3 font-semibold text-gray-100">{formatINR(d.cumulativeValue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
-      </Collapse>
+      <Collapse 
+        className="bg-dark-card border-dark-border shadow-xl rounded-xl overflow-hidden mt-2"
+        items={[
+          {
+            key: '1',
+            label: <span className="text-xs font-bold text-gray-200">📋 Click to View Month-by-Month Growth Details</span>,
+            className: "border-none bg-dark-card",
+            children: (
+              <div className="overflow-x-auto max-h-[300px] overflow-y-auto pr-2">
+                <table className="min-w-full text-left text-xs font-medium border-collapse text-gray-300">
+                  <thead>
+                    <tr className="border-b border-dark-border text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-2 px-3">Month</th>
+                      <th className="py-2 px-3">SIP Amount</th>
+                      <th className="py-2 px-3">Interest Gained</th>
+                      <th className="py-2 px-3">Cumulative Principal</th>
+                      <th className="py-2 px-3">Cumulative Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.details.map((d, idx) => (
+                      <tr
+                        key={idx}
+                        className={`border-b border-dark-border/40 hover:bg-white/5 transition-colors ${
+                          d.isProjection ? 'text-gray-500 italic' : ''
+                        }`}
+                      >
+                        <td className="py-2.5 px-3">
+                          {formatMonth(d.month)} {d.isProjection && '(Proj)'}
+                        </td>
+                        <td className="py-2.5 px-3">{formatINR(d.sip)}</td>
+                        <td className="py-2.5 px-3 text-green-400/80">{formatINR(d.interest)}</td>
+                        <td className="py-2.5 px-3">{formatINR(d.cumulativePrincipal)}</td>
+                        <td className="py-2.5 px-3 font-semibold text-gray-100">{formatINR(d.cumulativeValue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          }
+        ]}
+      />
     </div>
   );
 }

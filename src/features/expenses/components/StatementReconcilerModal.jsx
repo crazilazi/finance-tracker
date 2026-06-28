@@ -171,7 +171,7 @@ export default function StatementReconcilerModal({ open, onClose }) {
           value={val}
           onChange={v => handleFieldChange(record.id, 'type', v)}
           style={{ width: 95 }}
-          popupClassName={isDark ? 'dark-dropdown' : ''}
+          classNames={{ popup: { root: isDark ? 'dark-dropdown' : '' } }}
         >
           <Option value="Expense">Expense</Option>
           <Option value="EMI">EMI</Option>

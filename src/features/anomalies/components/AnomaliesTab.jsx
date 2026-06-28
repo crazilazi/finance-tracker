@@ -11,9 +11,9 @@ import {
   Title,
   Tooltip,
   Legend
-} from 'chart.js';
+, Filler } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 export default function AnomaliesTab() {
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);

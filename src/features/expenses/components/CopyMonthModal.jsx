@@ -199,7 +199,7 @@ export default function CopyMonthModal({ open, onClose }) {
               style={{ width: '100%' }}
               value={sourceMonth}
               onChange={val => setSourceMonth(val)}
-              popupClassName={isDark ? 'dark-dropdown' : ''}
+              classNames={{ popup: { root: isDark ? 'dark-dropdown' : '' } }}
             >
               {uniqueMonths.map(m => {
                 const [y, mo] = m.split('-');
