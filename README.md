@@ -1,6 +1,6 @@
 # 💎 Finance Tracker
 
-A state-of-the-art, highly intuitive user-scoped financial analytics platform built with Next.js, React, Redux-Observable, RxJS, and TailwindCSS. Features real-time financial health forecasting, OAuth 2.0 authentication, interactive chart click drill-downs, Bank Statement Excel reconciliation, yearly audit scanning, and a self-healing SQL Server / JSON dual-storage backend.
+A state-of-the-art, highly intuitive user-scoped financial analytics platform built with **Next.js 16 (Turbopack)**, **React 19**, Redux-Observable, RxJS, **Ant Design v6**, and **Tailwind CSS v4**. Features real-time financial health forecasting, OAuth 2.0 authentication, interactive chart click drill-downs, Bank Statement Excel reconciliation, yearly audit scanning, and a self-healing SQL Server / JSON dual-storage backend.
 
 ---
 
@@ -40,6 +40,12 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 - **Primary Storage**: Microsoft SQL Server (`mssql`).
 - **Fallback Storage**: Local JSON engine (`public/expense_data.json`).
 - **Self-Healing Resilience**: Automatic seamless fallback to local JSON storage if local SQL Server connections go offline or timeout.
+
+### ⚡ 8. High-Performance Architecture (v16 Upgrade)
+- **Next.js 16 & React 19**: Powered by Turbopack and React 19's concurrent features.
+- **Server-Side Aggregation**: All chart generation, monthly totals, and complex statistics are pre-computed on the backend (`/api/expenses/analytics`), eliminating heavy client-side processing bottlenecks.
+- **Server-Paginated Data**: The Data Table integrates tightly with SQL `OFFSET/FETCH` to ensure minimal payload sizes when handling tens of thousands of rows.
+- **Tailwind CSS v4**: Features the new PostCSS `@tailwindcss/postcss` rendering pipeline for blazing fast styling.
 
 ---
 
