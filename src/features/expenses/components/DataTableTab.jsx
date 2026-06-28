@@ -287,7 +287,8 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
 
       {/* Main Table — server-paginated */}
       <Table
-        dataSource={tableData}
+        // Slice to pageSize to prevent Antd warnings during transient state updates when changing page sizes
+        dataSource={tableData.slice(0, pageSize)}
         columns={columns}
         rowKey="uuid"
         rowSelection={rowSelection}
