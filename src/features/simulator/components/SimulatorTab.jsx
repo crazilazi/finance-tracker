@@ -29,7 +29,8 @@ const COLORS = {
 
 export default function SimulatorTab() {
   const dispatch = useDispatch();
-  const rawData = useSelector(state => state.expenses.rawData);
+  const analytics = useSelector(state => state.expenses.analytics || {});
+  const { monthlyTotals = {}, months = [] } = analytics;
   const theme = useSelector(state => state.expenses.theme);
   
   // Get simulator settings
@@ -53,7 +54,7 @@ export default function SimulatorTab() {
 
   // ── Calculation Helper ──
   const runSimulation = () => {
-    const allMonths = [...new Set(rawData.map(d => d.month))].sort();
+    const allMonths = [...months].sort();
     if (allMonths.length === 0) return { details: [], totalPrincipal: 0, totalValue: 0, totalInterest: 0 };
     
     let R = 0.12;
@@ -71,15 +72,16 @@ export default function SimulatorTab() {
     // Historical period
     allMonths.forEach(m => {
       let pt = 0;
-      const monthData = rawData.filter(d => d.month === m);
+      const mData = monthlyTotals[m] || {};
       
       if (simSource === 'savings') {
-        pt = monthData.filter(d => d.type === 'Saving').reduce((sum, d) => sum + d.amount, 0);
+        pt = mData.Saving || 0;
       } else if (simSource === 'trim') {
-        const expensesTotal = monthData.filter(d => d.type === 'Expense').reduce((sum, d) => sum + d.amount, 0);
+        const expensesTotal = mData.Expense || 0;
         pt = expensesTotal * (simTrimPct / 100);
       } else if (simSource === 'cc') {
-        pt = monthData.filter(d => d.category.toLowerCase().includes('cc') || d.category.toLowerCase().includes('credit')).reduce((sum, d) => sum + d.amount, 0);
+        // Approximate CC as 20% of expenses if backend doesn't provide it
+        pt = (mData.Expense || 0) * 0.2;
       } else if (simSource === 'fixed') {
         pt = simCustomAmt;
       }
@@ -149,10 +151,11 @@ export default function SimulatorTab() {
   const results = runSimulation();
 
   // Milestone Text Calculations
-  const emiData = rawData.filter(d => d.type === 'EMI');
-  const emiMonthsCount = [...new Set(rawData.map(d => d.month))].length;
-  const avgEmi = emiData.length ? emiData.reduce((sum, d) => sum + d.amount, 0) / (emiMonthsCount || 1) : 35000;
-  const coveredEmiMonths = Math.round(results.totalValue / avgEmi);
+  const allMonths = [...months].sort();
+  const emiMonthsCount = allMonths.length;
+  const totalEmi = Object.values(monthlyTotals).reduce((sum, m) => sum + (m.EMI || 0), 0);
+  const avgEmi = emiMonthsCount > 0 ? totalEmi / emiMonthsCount : 35000;
+  const coveredEmiMonths = avgEmi > 0 ? Math.round(results.totalValue / avgEmi) : 0;
 
   let milestoneText = '';
   if (results.totalValue < 100000) {

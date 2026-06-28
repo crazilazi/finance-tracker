@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { Card, Row, Col, Tag } from 'antd';
+import { Card, Row, Col, Tag, Spin } from 'antd';
 import {
   SafetyOutlined,
   WarningOutlined,
@@ -14,9 +14,21 @@ import {
 import { getMonthlyTotals, getCategoryTotals, mean, stdDev } from '../../../utils/financeEngine';
 
 export default function InsightsTab() {
-  const rawData = useSelector(state => state.expenses.rawData);
+  const [rawData, setRawData] = useState(null);
+  const hideAmounts = useSelector(state => state.expenses.hideAmounts);
 
-  if (!rawData || rawData.length === 0) {
+  useEffect(() => {
+    fetch('/api/expenses?pageSize=10000', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(result => setRawData(result.data || []))
+      .catch(() => setRawData([]));
+  }, []);
+
+  if (rawData === null) {
+    return <div className="text-center text-gray-400 py-20"><Spin size="large" /> <p className="mt-4">Crunching numbers for insights...</p></div>;
+  }
+
+  if (rawData.length === 0) {
     return <div className="text-center text-gray-400 py-10">No data available to calculate insights.</div>;
   }
 
@@ -105,7 +117,6 @@ export default function InsightsTab() {
   const monthlyAvgOutflow = months.length ? totalSpend / months.length : 0;
   const bufferMonths = monthlyAvgOutflow > 0 ? totalSaving / monthlyAvgOutflow : 0;
 
-  const hideAmounts = useSelector(state => state.expenses.hideAmounts);
   const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
 
   const insightsList = [

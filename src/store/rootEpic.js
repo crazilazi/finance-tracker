@@ -1,16 +1,30 @@
 import { combineEpics } from 'redux-observable';
 import {
-  fetchExpensesEpic,
-  saveExpensesEpic,
-  analyticsEpic,
+  fetchTableDataEpic,
+  fetchAnalyticsEpic,
+  globalFilterChangeEpic,
+  tableConfigChangeEpic,
+  queryChangeEpic,
+  createExpenseEpic,
+  updateExpenseEpic,
+  deleteExpenseEpic,
+  undoEpic,
+  bulkSyncEpic,
   checkAuthSessionEpic,
-  logoutEpic
+  logoutEpic,
 } from '../features/expenses/expensesEpics';
 
 export const rootEpic = combineEpics(
-  fetchExpensesEpic,
-  saveExpensesEpic,
-  analyticsEpic,
+  fetchTableDataEpic,
+  fetchAnalyticsEpic,
+  globalFilterChangeEpic,
+  tableConfigChangeEpic,
+  queryChangeEpic,
+  createExpenseEpic,
+  updateExpenseEpic,
+  deleteExpenseEpic,
+  undoEpic,
+  bulkSyncEpic,
   checkAuthSessionEpic,
-  logoutEpic
+  logoutEpic,
 );

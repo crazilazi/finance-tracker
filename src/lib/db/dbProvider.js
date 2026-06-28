@@ -13,6 +13,30 @@ export async function getExpenses(config, rootDir, username) {
   return jsonProvider.getExpenses(rootDir, username);
 }
 
+export async function getExpensesPaginated(config, params, rootDir, username) {
+  if (config.dataSource === 'mssql') {
+    try {
+      return await mssqlProvider.getExpensesPaginated(config, params, username);
+    } catch (e) {
+      console.error('⚠️ SQL Server paginated fetch failed. Falling back to local JSON.', e.message);
+      return jsonProvider.getExpensesPaginated(rootDir, params, username);
+    }
+  }
+  return jsonProvider.getExpensesPaginated(rootDir, params, username);
+}
+
+export async function getAnalytics(config, params, rootDir, username) {
+  if (config.dataSource === 'mssql') {
+    try {
+      return await mssqlProvider.getAnalytics(config, params, username);
+    } catch (e) {
+      console.error('⚠️ SQL Server analytics failed. Falling back to local JSON.', e.message);
+      return jsonProvider.getAnalytics(rootDir, params, username);
+    }
+  }
+  return jsonProvider.getAnalytics(rootDir, params, username);
+}
+
 export async function saveExpenses(config, data, rootDir, username) {
   if (config.dataSource === 'mssql') {
     try {

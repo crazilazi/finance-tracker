@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { setTableFilters, setCurrentPage, selectFilteredTransactions } from '../../../features/expenses/expensesSlice';
+import { setTableFilters, setCurrentPage } from '../../../features/expenses/expensesSlice';
 import { Card, Row, Col, Progress } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -18,7 +18,7 @@ import {
 } from 'chart.js';
 import HealthGauge from '../../../components/ui/HealthGauge';
 import Sparkline from '../../../components/ui/Sparkline';
-import { getMonthlyTotals, pctChange, getCategoryTotals, calculateHealthScore, detectAnomalies, matchSmartQuery } from '../../../utils/financeEngine';
+import { pctChange } from '../../../utils/financeEngine';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement);
 
@@ -39,11 +39,18 @@ const COLORS = {
 
 export default function DashboardTab() {
   const dispatch = useDispatch();
-  const rawData = useSelector(state => state.expenses.rawData);
   const theme = useSelector(state => state.expenses.theme);
-  const filter = useSelector(state => state.expenses.filter);
-  const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+  const analytics = useSelector(state => state.expenses.analytics);
+  const analyticsLoading = useSelector(state => state.expenses.analyticsLoading);
+
+  const {
+    monthlyTotals = {},
+    months = [],
+    categoryTotals = [],
+    healthScore = 0,
+    healthMetrics = { savingsRate: 0, emiBurden: 0, stability: 0, anomalyScore: 0 },
+  } = analytics;
 
   const handleCardClick = (type) => {
     dispatch(setTableFilters({
@@ -55,54 +62,27 @@ export default function DashboardTab() {
     }));
     dispatch(setCurrentPage('data'));
   };
-  // NOTE: healthScore/healthMetrics are computed locally from filtered data
-  //       (not from Redux) so they always match the selected time range.
 
-  // Memoized derived data
-  const filtered       = useSelector(selectFilteredTransactions);
-  const months         = [...new Set(filtered.map(d => d.month))].sort();
-  const monthlyTotals  = getMonthlyTotals(filtered);
-
-  // ── Compute health score & metrics from filtered data ─────
-  const filteredAnomalies = detectAnomalies(filtered);
-  const health            = calculateHealthScore(filtered, filteredAnomalies);
-  const healthScore       = health.score;
-  const healthMetrics     = {
-    savingsRate:  health.savingsRate,
-    emiBurden:    health.emiBurden,
-    stability:    health.stability,
-    anomalyScore: health.anomalyScore,
-  };
-
-  // Compute key stats
-  // If a month has no Income, fallback to the total outflow of that month
+  // Compute KPI totals from analytics.monthlyTotals
   const totalIncome = months.reduce((sum, m) => {
     const inc = monthlyTotals[m]?.Income || 0;
     const tot = monthlyTotals[m]?.total || 0;
     return sum + (inc > 0 ? inc : tot);
   }, 0);
 
-  const totalSpent = filtered.filter(d => d.type === 'Expense' || d.type === 'EMI').reduce((sum, d) => sum + d.amount, 0);
-  
-  const expenseData = filtered.filter(d => d.type === 'Expense');
-  const avgExpense = months.length ? expenseData.reduce((sum, d) => sum + d.amount, 0) / months.length : 0;
-  
-  const emiData = filtered.filter(d => d.type === 'EMI');
-  const avgEmi = months.length ? emiData.reduce((sum, d) => sum + d.amount, 0) / months.length : 0;
-  
-  const savingData = filtered.filter(d => d.type === 'Saving');
-  const totalSaving = savingData.reduce((sum, d) => sum + d.amount, 0);
+  const totalSpent = months.reduce((sum, m) => {
+    return sum + (monthlyTotals[m]?.Expense || 0) + (monthlyTotals[m]?.EMI || 0);
+  }, 0);
 
+  const totalSaving = months.reduce((sum, m) => sum + (monthlyTotals[m]?.Saving || 0), 0);
   const netBalance = totalIncome - (totalSpent + totalSaving);
 
-  // Sparkline data
+  // Sparklines derived from monthlyTotals
   const sparklineIncome = months.map(m => {
     const inc = monthlyTotals[m]?.Income || 0;
     return inc > 0 ? inc : (monthlyTotals[m]?.total || 0);
   });
   const sparklineTotal = months.map(m => monthlyTotals[m]?.total || 0);
-  const sparklineExpense = months.map(m => monthlyTotals[m]?.Expense || 0);
-  const sparklineEmi = months.map(m => monthlyTotals[m]?.EMI || 0);
   const sparklineSaving = months.map(m => monthlyTotals[m]?.Saving || 0);
   const sparklineNet = months.map(m => {
     const inc = monthlyTotals[m]?.Income || 0;
@@ -115,9 +95,7 @@ export default function DashboardTab() {
     const curr = currArr[currArr.length - 1];
     const prev = currArr[currArr.length - 2];
     const change = pctChange(curr, prev);
-    
     if (change.pct === '0.0') return null;
-    
     const isUp = change.dir === 'up';
     return (
       <span className={`text-xs font-bold flex items-center gap-0.5 ${isUp ? 'text-red-400' : 'text-green-400'}`}>
@@ -127,7 +105,7 @@ export default function DashboardTab() {
     );
   };
 
-  // Stacked Bar configuration
+  // Stacked Bar
   const barData = {
     labels: months.map(m => {
       const [y, mo] = m.split('-');
@@ -169,7 +147,7 @@ export default function DashboardTab() {
     onClick: (event, elements, chart) => {
       if (elements && elements.length > 0) {
         const elementIndex = elements[0].index;
-        const rawLabel = chart.data.labels[elementIndex]; // e.g. "Jun 26"
+        const rawLabel = chart.data.labels[elementIndex];
         const monthsMap = {
           Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
           Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
@@ -178,13 +156,7 @@ export default function DashboardTab() {
         const year = '20' + yrShort;
         const monthNum = monthsMap[moName];
         if (year && monthNum) {
-          dispatch(setTableFilters({
-            year,
-            month: monthNum,
-            type: 'all',
-            category: 'all',
-            search: ''
-          }));
+          dispatch(setTableFilters({ year, month: monthNum, type: 'all', category: 'all', search: '' }));
           dispatch(setCurrentPage('data'));
         }
       }
@@ -195,18 +167,11 @@ export default function DashboardTab() {
     }
   };
 
-  // Donut chart configuration
-  const catTotals = getCategoryTotals(filtered).slice(0, 8);
+  // Donut — top 8 categories from server analytics
+  const catTotals = categoryTotals.slice(0, 8);
   const donutData = {
     labels: catTotals.map(c => c[0]),
-    datasets: [
-      {
-        data: catTotals.map(c => c[1]),
-        backgroundColor: COLORS.palette,
-        borderWidth: 1,
-        borderColor: '#161d30'
-      }
-    ]
+    datasets: [{ data: catTotals.map(c => c[1]), backgroundColor: COLORS.palette, borderWidth: 1, borderColor: '#161d30' }]
   };
 
   const donutOptions = {
@@ -222,15 +187,8 @@ export default function DashboardTab() {
     },
     onClick: (event, elements, chart) => {
       if (elements && elements.length > 0) {
-        const elementIndex = elements[0].index;
-        const category = chart.data.labels[elementIndex];
-        dispatch(setTableFilters({
-          category,
-          type: 'all',
-          search: '',
-          year: 'all',
-          month: 'all'
-        }));
+        const category = chart.data.labels[elements[0].index];
+        dispatch(setTableFilters({ category, type: 'all', search: '', year: 'all', month: 'all' }));
         dispatch(setCurrentPage('data'));
       }
     }
@@ -336,7 +294,9 @@ export default function DashboardTab() {
         <Col xs={24} lg={8}>
           <Card title="Category Distribution (Top 8)" className="bg-dark-card border-dark-border text-white shadow-xl">
             <div className="h-[280px]">
-              <Doughnut data={donutData} options={donutOptions} />
+              {catTotals.length > 0 ? <Doughnut data={donutData} options={donutOptions} /> : (
+                <div className="flex items-center justify-center h-full text-gray-500">No data</div>
+              )}
             </div>
           </Card>
         </Col>

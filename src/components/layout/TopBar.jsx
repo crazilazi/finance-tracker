@@ -11,18 +11,18 @@ export default function TopBar({ setMobileOpen, palette }) {
   const dispatch    = useDispatch();
   const currentPage = useSelector(state => state.expenses.currentPage);
   const themeMode   = useSelector(state => state.expenses.theme);
-  const rawData = useSelector(state => state.expenses.rawData || []);
+  const analytics   = useSelector(state => state.expenses.analytics || {});
   const filter      = useSelector(state => state.expenses.filter);
   const query       = useSelector(state => state.expenses.query || '');
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
-  const alerts      = useSelector(state => state.expenses.alerts);
+  const alerts      = analytics.alerts || [];
   const user        = useSelector(state => state.expenses.user);
   const [drawerVisible, setDrawerVisible] = useState(false);
 
   const c = palette || DARK;
 
-  // Extract and sort unique months descending (newest first)
-  const uniqueMonths = [...new Set(rawData.map(d => d.month))].sort().reverse();
+  // Extract unique unfiltered months for the dropdown
+  const uniqueMonths = analytics.allMonths || [];
 
   // Sync theme mode to <html> for Tailwind dark class + CSS data-attribute
   useEffect(() => {

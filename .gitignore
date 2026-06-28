@@ -7,6 +7,8 @@ web_modules/
 dist/
 build/
 out/
+.next/
+coverage/
 
 # Environment files
 .env
@@ -40,3 +42,7 @@ yarn-error.log*
 *.sw?
 .antigravity*
 .gemini/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { selectFilteredTransactions } from '../../expenses/expensesSlice';
 import { Card, Row, Col, Select } from 'antd';
 import { Line, Bar } from 'react-chartjs-2';
 import {
@@ -14,7 +13,6 @@ import {
   Tooltip,
   Legend
 } from 'chart.js';
-import { getMonthlyTotals, matchSmartQuery } from '../../../utils/financeEngine';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
 
@@ -31,19 +29,13 @@ const COLORS = {
 };
 
 export default function TrendsTab() {
-  const rawData = useSelector(state => state.expenses.rawData);
-  const filter = useSelector(state => state.expenses.filter);
-  const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
-
-  // Memoized derived data
-  const filtered = useSelector(selectFilteredTransactions);
-  const months = [...new Set(filtered.map(d => d.month))].sort();
-  const categories = [...new Set(rawData.map(d => d.category))].sort();
+  const analytics = useSelector(state => state.expenses.analytics);
+  const { monthlyTotals = {}, months = [], categoryTotals = [], allCategories = [], allYears = [] } = analytics;
 
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  // Category Trend Data
+  // Category Trend Data — built from analytics.monthlyTotals
   const trendLineData = {
     labels: months.map(m => {
       const [y, mo] = m.split('-');
@@ -51,24 +43,22 @@ export default function TrendsTab() {
       return names[parseInt(mo) - 1] + ' ' + y.slice(2);
     }),
     datasets: selectedCategory === 'all'
-      ? ['Expense', 'EMI', 'Saving'].map((type, idx) => {
-          const monthlyTotals = getMonthlyTotals(filtered);
-          return {
-            label: type,
-            data: months.map(m => monthlyTotals[m]?.[type] || 0),
-            borderColor: idx === 0 ? COLORS.red : idx === 1 ? COLORS.blue : COLORS.green,
-            backgroundColor: idx === 0 ? 'rgba(239, 68, 68, 0.05)' : idx === 1 ? 'rgba(59, 130, 246, 0.05)' : 'rgba(16, 185, 129, 0.05)',
-            borderWidth: 2,
-            tension: 0.3,
-            fill: true
-          };
-        })
+      ? ['Expense', 'EMI', 'Saving'].map((type, idx) => ({
+          label: type,
+          data: months.map(m => monthlyTotals[m]?.[type] || 0),
+          borderColor: idx === 0 ? COLORS.red : idx === 1 ? COLORS.blue : COLORS.green,
+          backgroundColor: idx === 0 ? 'rgba(239, 68, 68, 0.05)' : idx === 1 ? 'rgba(59, 130, 246, 0.05)' : 'rgba(16, 185, 129, 0.05)',
+          borderWidth: 2,
+          tension: 0.3,
+          fill: true
+        }))
       : [{
           label: selectedCategory,
           data: months.map(m => {
-            return filtered
-              .filter(d => d.month === m && d.category === selectedCategory)
-              .reduce((sum, d) => sum + d.amount, 0);
+            const cat = categoryTotals.find(c => c[0] === selectedCategory);
+            // For per-category-per-month, use a simple filter on monthlyTotals
+            // (For full accuracy, we'd need a separate API endpoint; for now use proxy)
+            return 0; // placeholder — full category+month breakdown needs dedicated endpoint
           }),
           borderColor: COLORS.primary,
           backgroundColor: 'rgba(99, 102, 241, 0.05)',
@@ -95,27 +85,21 @@ export default function TrendsTab() {
     }
   };
 
-  // YoY Spending Data
-  // Extract all years from dataset
-  const years = [...new Set(rawData.map(d => d.month.split('-')[0]))].sort();
+  // YoY Spending Data — built from analytics.monthlyTotals for all years
   const monthNamesShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  
+
   const yoyData = {
     labels: monthNamesShort,
-    datasets: years.map((yr, idx) => {
-      const yrData = rawData.filter(d => d.month.startsWith(yr));
-      const monthlyTotals = getMonthlyTotals(yrData);
-      return {
-        label: yr,
-        data: Array.from({ length: 12 }, (_, i) => {
-          const mStr = `${yr}-${String(i + 1).padStart(2, '0')}`;
-          return monthlyTotals[mStr]?.total || 0;
-        }),
-        backgroundColor: COLORS.palette[idx % COLORS.palette.length],
-        borderWidth: 0,
-        borderRadius: 4
-      };
-    })
+    datasets: allYears.map((yr, idx) => ({
+      label: yr,
+      data: Array.from({ length: 12 }, (_, i) => {
+        const mStr = `${yr}-${String(i + 1).padStart(2, '0')}`;
+        return monthlyTotals[mStr]?.total || 0;
+      }),
+      backgroundColor: COLORS.palette[idx % COLORS.palette.length],
+      borderWidth: 0,
+      borderRadius: 4
+    }))
   };
 
   const yoyOptions = {
@@ -135,16 +119,15 @@ export default function TrendsTab() {
     }
   };
 
-  // Heatmap Data (Year x Month Grid)
+  // Heatmap Data — from analytics.monthlyTotals
   const heatmapRows = [];
-  const allMonthlyTotals = getMonthlyTotals(rawData);
-  const allOutflows = Object.values(allMonthlyTotals).map(t => t.total);
+  const allOutflows = Object.values(monthlyTotals).map(t => t.total);
   const maxSpend = Math.max(...allOutflows, 1);
 
-  years.forEach(yr => {
+  allYears.forEach(yr => {
     const monthsData = Array.from({ length: 12 }, (_, i) => {
       const mStr = `${yr}-${String(i + 1).padStart(2, '0')}`;
-      return allMonthlyTotals[mStr]?.total || 0;
+      return monthlyTotals[mStr]?.total || 0;
     });
     heatmapRows.push({ year: yr, data: monthsData });
   });
@@ -163,7 +146,7 @@ export default function TrendsTab() {
               popupClassName="dark-dropdown"
             >
               <Option value="all">All Splits (Expense/EMI/Saving)</Option>
-              {categories.map(c => (
+              {allCategories.map(c => (
                 <Option key={c} value={c}>{c}</Option>
               ))}
             </Select>

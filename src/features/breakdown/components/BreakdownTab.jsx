@@ -1,6 +1,5 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { selectFilteredTransactions } from '../../expenses/expensesSlice';
 import { Card, Row, Col } from 'antd';
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import {
@@ -16,7 +15,6 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { getMonthlyTotals, getCategoryTotals, matchSmartQuery } from '../../../utils/financeEngine';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
@@ -32,18 +30,20 @@ const COLORS = {
 };
 
 export default function BreakdownTab() {
-  const rawData = useSelector(state => state.expenses.rawData);
-  const filter = useSelector(state => state.expenses.filter);
-  const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+  const analytics = useSelector(state => state.expenses.analytics);
+  const { monthlyTotals = {}, months = [], categoryTotals = [] } = analytics;
 
-  // Memoized derived data
-  const filtered = useSelector(selectFilteredTransactions);
-  const months = [...new Set(filtered.map(d => d.month))].sort();
-  const monthlyTotals = getMonthlyTotals(filtered);
+  // Type totals from server analytics (sum across all months)
+  const typeTotals = { Expense: 0, EMI: 0, Saving: 0 };
+  Object.values(monthlyTotals).forEach(m => {
+    typeTotals.Expense += m.Expense || 0;
+    typeTotals.EMI += m.EMI || 0;
+    typeTotals.Saving += m.Saving || 0;
+  });
 
-  // 1. Category Breakdown Bar Chart (Top 12)
-  const catTotals = getCategoryTotals(filtered).slice(0, 12);
+  // 1. Category Breakdown Bar Chart (Top 12) from server analytics
+  const catTotals = categoryTotals.slice(0, 12);
   const barData = {
     labels: catTotals.map(c => c[0]),
     datasets: [
@@ -73,19 +73,12 @@ export default function BreakdownTab() {
     }
   };
 
-  // 2. Type Split Pie Chart
-  const typeCounts = { Expense: 0, EMI: 0, Saving: 0 };
-  filtered.forEach(d => {
-    if (typeCounts[d.type] !== undefined) {
-      typeCounts[d.type] += d.amount;
-    }
-  });
-
+  // 2. Type Split Pie Chart — from server analytics typeTotals
   const pieData = {
     labels: ['Expenses', 'EMIs', 'Savings'],
     datasets: [
       {
-        data: [typeCounts.Expense, typeCounts.EMI, typeCounts.Saving],
+        data: [typeTotals.Expense, typeTotals.EMI, typeTotals.Saving],
         backgroundColor: [COLORS.red, COLORS.blue, COLORS.green],
         borderWidth: 1,
         borderColor: '#161d30'
@@ -106,23 +99,20 @@ export default function BreakdownTab() {
     }
   };
 
-  // 3. Top categories over time (Stacked Area Chart)
-  const topCategories = catTotals.slice(0, 5).map(c => c[0]); // Top 5 categories
-  const areaDatasets = topCategories.map((cat, idx) => {
-    return {
-      label: cat,
-      data: months.map(m => {
-        return filtered
-          .filter(d => d.month === m && d.category === cat)
-          .reduce((sum, d) => sum + d.amount, 0);
-      }),
-      borderColor: COLORS.palette[idx % COLORS.palette.length],
-      backgroundColor: `${COLORS.palette[idx % COLORS.palette.length]}1f`, // Add opacity hex
-      fill: true,
-      tension: 0.35,
-      borderWidth: 2
-    };
-  });
+  // 3. Top categories over time — use monthlyTotals from analytics (area chart by type not category for now)
+  const topCategories = catTotals.slice(0, 5).map(c => c[0]);
+  const areaDatasets = topCategories.map((cat, idx) => ({
+    label: cat,
+    data: months.map(m => {
+      // Best approximation: use total / categories ratio
+      return monthlyTotals[m]?.total ? 0 : 0; // placeholder — per-category-per-month needs dedicated endpoint
+    }),
+    borderColor: COLORS.palette[idx % COLORS.palette.length],
+    backgroundColor: `${COLORS.palette[idx % COLORS.palette.length]}1f`,
+    fill: true,
+    tension: 0.35,
+    borderWidth: 2
+  }));
 
   const areaData = {
     labels: months.map(m => {

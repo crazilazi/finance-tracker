@@ -1,33 +1,30 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification, message } from 'antd';
+import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification, message, Spin } from 'antd';
 import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, SyncOutlined } from '@ant-design/icons';
 import {
   setTableFilters,
   setSort,
-  deleteExpense,
-  deleteBulkExpenses,
-  undoAction,
   setDataPage,
-  selectFilteredTransactions
+  setPageSize,
 } from '../expensesSlice';
-
-import { matchSmartQuery } from '../../../utils/financeEngine';
 
 const { Option } = Select;
 
 export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, onReconcile }) {
   const dispatch = useDispatch();
-  const rawData = useSelector(state => state.expenses.rawData);
+  const tableData = useSelector(state => state.expenses.tableData);
+  const tableTotalCount = useSelector(state => state.expenses.tableTotalCount);
   const tableFilters = useSelector(state => state.expenses.tableFilters);
   const sortCol = useSelector(state => state.expenses.sortCol);
   const sortDir = useSelector(state => state.expenses.sortDir);
   const dataPage = useSelector(state => state.expenses.dataPage);
   const pageSize = useSelector(state => state.expenses.pageSize);
-  const anomalies = useSelector(state => state.expenses.anomalies);
-  const filter = useSelector(state => state.expenses.filter);
-  const query = useSelector(state => state.expenses.query);
+  const tableLoading = useSelector(state => state.expenses.tableLoading);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+  const anomalies = useSelector(state => state.expenses.analytics.anomalies);
+  const allCategories = useSelector(state => state.expenses.analytics.allCategories);
+  const allYears = useSelector(state => state.expenses.analytics.allYears);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
@@ -36,80 +33,25 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
     onChange: (keys) => setSelectedRowKeys(keys)
   };
 
-  const handleBulkDelete = () => {
-    dispatch(deleteBulkExpenses(selectedRowKeys));
-    const count = selectedRowKeys.length;
-    setSelectedRowKeys([]);
-    message.success(`Successfully deleted ${count} selected records!`);
-  };
-
   const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
-  
+
   const formatMonth = (m) => {
     const [y, mo] = m.split('-');
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return months[parseInt(mo) - 1] + ' ' + y.slice(2);
   };
 
-  const filtered = useSelector(selectFilteredTransactions);
-  const categories = [...new Set(rawData.map(d => d.category))].sort();
-  const uniqueYears = [...new Set(rawData.map(d => d.month.split('-')[0]))].sort().reverse();
+  const anomalyKeys = new Set((anomalies || []).filter(a => a.type !== 'missing').map(a => `${a.month}-${a.category}`));
+  const highAnomalyKeys = new Set((anomalies || []).filter(a => a.severity === 'high').map(a => `${a.month}-${a.category}`));
 
-  // Filter & Search Table Data
-  let tableData = filtered.map((d) => {
-    const originalIndex = rawData.findIndex(item => item === d);
-    return { ...d, originalIndex };
-  });
-
-  if (tableFilters.year !== 'all') {
-    tableData = tableData.filter(d => d.month.startsWith(tableFilters.year));
-  }
-  if (tableFilters.month !== 'all') {
-    tableData = tableData.filter(d => d.month.endsWith('-' + tableFilters.month));
-  }
-
-  if (tableFilters.type !== 'all') {
-    tableData = tableData.filter(d => d.type === tableFilters.type);
-  }
-  if (tableFilters.category !== 'all') {
-    tableData = tableData.filter(d => d.category === tableFilters.category);
-  }
-  if (tableFilters.search) {
-    const q = tableFilters.search.toLowerCase();
-    tableData = tableData.filter(
-      d => d.category.toLowerCase().includes(q) || d.month.includes(q)
-    );
-  }
-
-  // Sort Table Data
-  tableData = [...tableData].sort((a, b) => {
-    let valA = a[sortCol];
-    let valB = b[sortCol];
-    if (sortCol === 'amount') {
-      valA = parseFloat(valA);
-      valB = parseFloat(valB);
-    }
-    if (valA < valB) return sortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return sortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  // Anomaly checks lookup set
-  const anomalyKeys = new Set(anomalies.filter(a => a.type !== 'missing').map(a => `${a.month}-${a.category}`));
-  const highAnomalyKeys = new Set(anomalies.filter(a => a.severity === 'high').map(a => `${a.month}-${a.category}`));
-
-  const handleDelete = (originalIndex) => {
-    const item = rawData[originalIndex];
-    dispatch(deleteExpense({ index: originalIndex, uuid: item?.uuid }));
-    
-    // Trigger undo notification toast
+  const handleDelete = (record) => {
     const key = `delete-${Date.now()}`;
     const btn = (
       <Button
         type="primary"
         size="small"
         onClick={() => {
-          dispatch(undoAction());
+          dispatch({ type: 'expenses/undoLast' });
           notification.destroy(key);
         }}
         icon={<UndoOutlined />}
@@ -117,13 +59,30 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
         Undo
       </Button>
     );
+    dispatch({ type: 'expenses/deleteExpense', payload: { uuid: record.uuid, snapshot: record } });
     notification.success({
       message: 'Expense Deleted',
-      description: `Removed ${item.category} — ${formatINR(item.amount)}`,
+      description: `Removed ${record.category} — ${formatINR(record.amount)}`,
       btn,
       key,
       duration: 5
     });
+  };
+
+  const handleBulkDelete = () => {
+    // Get selected rows' UUIDs
+    const uuids = selectedRowKeys.map(key => {
+      const row = tableData.find(d => d.uuid === key);
+      return row?.uuid;
+    }).filter(Boolean);
+
+    // Bulk delete via bulk sync with remaining items - for now dispatch individual deletes
+    uuids.forEach(uuid => {
+      const row = tableData.find(d => d.uuid === uuid);
+      if (row) dispatch({ type: 'expenses/deleteExpense', payload: { uuid, snapshot: row } });
+    });
+    setSelectedRowKeys([]);
+    message.success(`Successfully deleted ${uuids.length} selected records!`);
   };
 
   const columns = [
@@ -168,7 +127,6 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
         const key = `${record.month}-${record.category}`;
         const isHigh = highAnomalyKeys.has(key);
         const isAnomaly = anomalyKeys.has(key);
-        
         if (isHigh) return <Tag color="error">Anomaly</Tag>;
         if (isAnomaly) return <Tag color="warning">Warning</Tag>;
         return <Tag color="success">Normal</Tag>;
@@ -183,13 +141,13 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
           <Button
             type="text"
             icon={<EditOutlined className="text-gray-400 hover:text-indigo-400" />}
-            onClick={() => onEdit(record.originalIndex)}
+            onClick={() => onEdit(record)}
             className="hover:bg-gray-800"
           />
           <Popconfirm
             title="Delete Expense?"
             description="Are you sure you want to delete this record?"
-            onConfirm={() => handleDelete(record.originalIndex)}
+            onConfirm={() => handleDelete(record)}
             okText="Yes"
             cancelText="No"
             placement="topRight"
@@ -238,7 +196,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
             }
           >
             <Option value="all">All Categories</Option>
-            {categories.map(c => (
+            {allCategories.map(c => (
               <Option key={c} value={c}>{c}</Option>
             ))}
           </Select>
@@ -249,7 +207,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
             popupClassName="dark-dropdown"
           >
             <Option value="all">All Years</Option>
-            {uniqueYears.map(yr => (
+            {allYears.map(yr => (
               <Option key={yr} value={yr}>{yr}</Option>
             ))}
           </Select>
@@ -278,12 +236,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
               type="primary"
               icon={<CopyOutlined />}
               onClick={onCopyTemplate}
-              style={{
-                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                border: 'none',
-                borderRadius: 8,
-                height: 38
-              }}
+              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', border: 'none', borderRadius: 8, height: 38 }}
             >
               Copy Month Template
             </Button>
@@ -293,13 +246,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
               type="default"
               icon={<SearchOutlined />}
               onClick={onScanMissing}
-              style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid #374151',
-                color: '#f3f4f6',
-                borderRadius: 8,
-                height: 38
-              }}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #374151', color: '#f3f4f6', borderRadius: 8, height: 38 }}
             >
               Scan Missing Year Data
             </Button>
@@ -309,12 +256,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
               type="primary"
               icon={<SyncOutlined />}
               onClick={onReconcile}
-              style={{
-                background: 'linear-gradient(135deg, #10b981, #059669)',
-                border: 'none',
-                borderRadius: 8,
-                height: 38
-              }}
+              style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: 8, height: 38 }}
             >
               Reconcile Statement
             </Button>
@@ -343,23 +285,34 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
         </div>
       </div>
 
-      {/* Main Table */}
+      {/* Main Table — server-paginated */}
       <Table
         dataSource={tableData}
         columns={columns}
-        rowKey="originalIndex"
+        rowKey="uuid"
         rowSelection={rowSelection}
+        loading={tableLoading}
         pagination={{
           current: dataPage,
           pageSize: pageSize,
-          total: tableData.length,
-          onChange: (page) => dispatch(setDataPage(page)),
-          showSizeChanger: false,
+          total: tableTotalCount,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50', '100', '500'],
+          showTotal: (total) => `${total} records`,
           className: 'dark-pagination'
         }}
-        onChange={(pagination, filters, sorter) => {
-          if (sorter && sorter.columnKey) {
-            dispatch(setSort(sorter.columnKey));
+        onChange={(pagination, filters, sorter, extra) => {
+          if (extra && extra.action === 'paginate') {
+            if (pagination.current !== dataPage) {
+              dispatch(setDataPage(pagination.current));
+            }
+            if (pagination.pageSize !== pageSize) {
+              dispatch(setPageSize(pagination.pageSize));
+            }
+          } else if (extra && extra.action === 'sort') {
+            if (sorter && (sorter.columnKey || sorter.field)) {
+              dispatch(setSort(sorter.columnKey || sorter.field));
+            }
           }
         }}
         className="dark-table"

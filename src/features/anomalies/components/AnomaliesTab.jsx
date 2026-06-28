@@ -1,6 +1,5 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { selectFilteredTransactions } from '../../expenses/expensesSlice';
 import { Card, Row, Col } from 'antd';
 import { Line } from 'react-chartjs-2';
 import {
@@ -13,45 +12,18 @@ import {
   Tooltip,
   Legend
 } from 'chart.js';
-import { getMonthlyTotals, matchSmartQuery } from '../../../utils/financeEngine';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 export default function AnomaliesTab() {
-  const anomalies = useSelector(state => state.expenses.anomalies);
-  const rawData = useSelector(state => state.expenses.rawData);
-  const filter = useSelector(state => state.expenses.filter);
-  const query = useSelector(state => state.expenses.query);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+  const analytics = useSelector(state => state.expenses.analytics);
+  const anomalies = analytics.anomalies || [];
+  const monthlyTotals = analytics.monthlyTotals || {};
+  const months = analytics.months || [];
 
-  // Memoized derived data
-  const filtered = useSelector(selectFilteredTransactions);
-  const months = [...new Set(filtered.map(d => d.month))].sort();
-  const monthlyTotals = getMonthlyTotals(filtered);
-
-  // Filter anomalies list
-  const currentAnomalies = anomalies.filter(a => {
-    let timeMatch = true;
-    if (filter !== 'all') {
-      if (filter.startsWith('last')) {
-        const n = parseInt(filter.replace('last', ''));
-        const cutoffMonths = [...new Set(rawData.map(d => d.month))].sort().slice(-n);
-        timeMatch = cutoffMonths.includes(a.month);
-      } else {
-        timeMatch = a.month.startsWith(filter);
-      }
-    }
-    if (!timeMatch) return false;
-
-    if (query) {
-      const q = query.toLowerCase().trim();
-      return a.category.toLowerCase().includes(q) || 
-             a.detail.toLowerCase().includes(q) || 
-             a.severity.toLowerCase().includes(q) || 
-             a.month.toLowerCase().includes(q);
-    }
-    return true;
-  });
+  // Anomalies already filtered by server — show them directly
+  const currentAnomalies = anomalies;
 
   const highCount = currentAnomalies.filter(a => a.severity === 'high').length;
   const mediumCount = currentAnomalies.filter(a => a.severity === 'medium').length;

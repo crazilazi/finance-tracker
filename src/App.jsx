@@ -35,7 +35,7 @@ export default function App() {
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [scannerModalOpen, setScannerModalOpen] = useState(false);
   const [reconcileModalOpen, setReconcileModalOpen] = useState(false);
-  const [editIndex, setEditIndex]   = useState(null);
+  const [editRecord, setEditRecord] = useState(null);
 
   const initialized = useRef(false);
   useEffect(() => {
@@ -62,13 +62,13 @@ export default function App() {
     }
   }, [currentPage]);
 
-  const handleEdit = (index) => {
-    setEditIndex(index);
+  const handleEdit = (record) => {
+    setEditRecord(record);
     setModalOpen(true);
   };
 
   const handleAdd = () => {
-    setEditIndex(null);
+    setEditRecord(null);
     setModalOpen(true);
   };
 
@@ -187,8 +187,8 @@ export default function App() {
       {/* ── Add / Edit Expense modal ───────────────────────────── */}
       <ExpenseModal
         open={modalOpen}
-        onClose={() => { setModalOpen(false); setEditIndex(null); }}
-        editIndex={editIndex}
+        onClose={() => { setModalOpen(false); setEditRecord(null); }}
+        editRecord={editRecord}
       />
 
       {/* ── Copy Month Template modal ──────────────────────────── */}

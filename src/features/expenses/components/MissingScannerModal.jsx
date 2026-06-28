@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { Modal, Select, Table, Tag, Button, Card, Row, Col, Alert, Tooltip } from 'antd';
 import { SearchOutlined, AlertOutlined, CheckCircleOutlined, CopyOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
@@ -8,26 +8,34 @@ const { Option } = Select;
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate }) {
-  const rawData = useSelector(state => state.expenses.rawData);
+  const analytics = useSelector(state => state.expenses.analytics);
   const theme = useSelector(state => state.expenses.theme);
   const isDark = theme === 'dark';
 
   const currentYear = new Date().getFullYear().toString();
-  const dataYears = [...new Set(rawData.map(d => d.month.split('-')[0]))];
-  if (!dataYears.includes(currentYear)) dataYears.push(currentYear);
-  const years = dataYears.sort().reverse();
+  const allYears = analytics.allYears || [];
+  const years = allYears.includes(currentYear) ? allYears : [currentYear, ...allYears];
 
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [yearData, setYearData] = useState([]);
+
+  // Fetch expense data for the selected year from API
+  useEffect(() => {
+    if (!open) return;
+    fetch(`/api/expenses?filter=${selectedYear}&pageSize=500`, { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(result => setYearData(result.data || []))
+      .catch(() => setYearData([]));
+  }, [selectedYear, open]);
 
   // 1. All 12 month strings for selectedYear
   const all12Months = Array.from({ length: 12 }, (_, i) => `${selectedYear}-${String(i + 1).padStart(2, '0')}`);
 
   // 2. Identify completely missing months
-  const missingMonths = all12Months.filter(m => !rawData.some(d => d.month === m));
+  const missingMonths = all12Months.filter(m => !yearData.some(d => d.month === m));
 
   // 3. Category gap analysis
-  const yearData = rawData.filter(d => d.month.startsWith(selectedYear));
   const yearCategories = [...new Set(yearData.map(d => d.category))].sort();
 
   const categoryGaps = yearCategories.map(cat => {

@@ -3,17 +3,17 @@ import { useSelector, useDispatch } from 'react-redux';
 import { Modal, Upload, Table, Tag, Button, Select, Input, InputNumber, Checkbox, Radio, message, Alert } from 'antd';
 import { InboxOutlined, CheckCircleOutlined, SyncOutlined, FullscreenOutlined, FullscreenExitOutlined, RocketOutlined } from '@ant-design/icons';
 import { parseStatementFile } from '../../../utils/statementParser';
-import { addExpense, updateExpense } from '../expensesSlice';
 
 const { Option } = Select;
 
 export default function StatementReconcilerModal({ open, onClose }) {
   const dispatch = useDispatch();
-  const rawData = useSelector(state => state.expenses.rawData);
+  const allCategories = useSelector(state => state.expenses.analytics.allCategories);
+  const tableData = useSelector(state => state.expenses.tableData);
   const theme = useSelector(state => state.expenses.theme);
   const isDark = theme === 'dark';
 
-  const knownCategories = [...new Set(rawData.map(d => d.category))].sort();
+  const knownCategories = allCategories;
 
   const [items, setItems] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -26,7 +26,7 @@ export default function StatementReconcilerModal({ open, onClose }) {
     reader.onload = (e) => {
       try {
         const buffer = e.target.result;
-        const reconciled = parseStatementFile(buffer, knownCategories, rawData);
+        const reconciled = parseStatementFile(buffer, knownCategories, tableData);
         setItems(reconciled);
         message.success(`Parsed ${reconciled.length} statement rows successfully!`);
       } catch (err) {
@@ -59,16 +59,17 @@ export default function StatementReconcilerModal({ open, onClose }) {
       };
 
       if (item.status === 'mismatch' && item.existingItem) {
-        const index = rawData.findIndex(d => d === item.existingItem);
-        if (index >= 0) {
-          dispatch(updateExpense({ index, data: payload }));
+        // Update: use the existingItem's uuid for the update action
+        const uuid = item.existingItem?.uuid;
+        if (uuid) {
+          dispatch({ type: 'expenses/updateExpense', payload: { uuid, data: payload, oldSnapshot: item.existingItem } });
           updateCount++;
         } else {
-          dispatch(addExpense(payload));
+          dispatch({ type: 'expenses/createExpense', payload });
           addCount++;
         }
       } else {
-        dispatch(addExpense(payload));
+        dispatch({ type: 'expenses/createExpense', payload });
         addCount++;
       }
     });

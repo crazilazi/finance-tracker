@@ -16,7 +16,7 @@ import { DARK } from '../ThemeProvider';
 export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
   const c = palette || DARK;  // fallback to dark if not passed
   const currentPage = useSelector(state => state.expenses.currentPage);
-  const anomalies   = useSelector(state => state.expenses.anomalies);
+  const anomalies   = useSelector(state => state.expenses.analytics.anomalies || []);
   const dispatch    = useDispatch();
 
   const menuItems = [

@@ -1,0 +1,73 @@
+import * as dbProvider from '../../../lib/db/dbProvider';
+import { detectAnomalies, generateAlerts, calculateHealthScore } from '../../../utils/financeEngine';
+
+const dbConfig = {
+  dataSource: process.env.DATA_SOURCE || 'json',
+  server: process.env.DB_SERVER || 'localhost',
+  database: process.env.DB_DATABASE || 'GaddiTracker',
+  user: process.env.DB_USER || 'sa',
+  password: process.env.DB_PASSWORD || 'sa',
+  trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === 'true' || true,
+};
+
+function getSessionUser(req) {
+  const cookieStr = req.headers.cookie;
+  if (!cookieStr) return null;
+  const match = cookieStr.match(/auth_session=([^;]+)/);
+  if (match) {
+    try {
+      return JSON.parse(decodeURIComponent(match[1]));
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', ['GET']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { filter = 'all', query = '' } = req.query;
+  const rootDir = process.cwd();
+
+  try {
+    const analyticsData = await dbProvider.getAnalytics(
+      dbConfig,
+      { filter, query },
+      rootDir,
+      user.username
+    );
+
+    // Run anomaly detection and health score on the filtered raw data
+    const { rawForAnomalies, monthlyTotals, months, categoryTotals, allCategories, allYears, allMonths } = analyticsData;
+    const anomalies = detectAnomalies(rawForAnomalies);
+    const alerts = generateAlerts(rawForAnomalies, anomalies);
+    const health = calculateHealthScore(rawForAnomalies, anomalies);
+
+    return res.status(200).json({
+      monthlyTotals,
+      months,
+      categoryTotals,
+      allCategories,
+      allYears,
+      allMonths,
+      anomalies,
+      alerts,
+      healthScore: health.score,
+      healthMetrics: {
+        savingsRate: health.savingsRate,
+        emiBurden: health.emiBurden,
+        stability: health.stability,
+        anomalyScore: health.anomalyScore,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+}

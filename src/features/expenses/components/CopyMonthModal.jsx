@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Modal, Select, Input, Checkbox, Table, Button, Form, message } from 'antd';
-import { copyMonthExpenses } from '../expensesSlice';
 import { FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
 
 const { Option } = Select;
 
 export default function CopyMonthModal({ open, onClose }) {
   const dispatch = useDispatch();
-  const rawData = useSelector(state => state.expenses.rawData);
+  const analytics = useSelector(state => state.expenses.analytics);
+  const tableData = useSelector(state => state.expenses.tableData);
   const theme = useSelector(state => state.expenses.theme);
   const isDark = theme === 'dark';
 
@@ -17,28 +17,33 @@ export default function CopyMonthModal({ open, onClose }) {
   const [items, setItems] = useState([]);
   const [isMaximized, setIsMaximized] = useState(false);
 
-  // Extract unique months descending
-  const uniqueMonths = [...new Set(rawData.map(d => d.month))].sort().reverse();
+  // Extract unique months from analytics.months (server provided)
+  const uniqueMonths = [...(analytics.months || [])].sort().reverse();
 
   // Populate items when source month changes
+  // Note: tableData only has current page — so we do a direct API call for the source month
   useEffect(() => {
     if (sourceMonth) {
-      const sourceData = rawData.filter(d => d.month === sourceMonth);
-      setItems(
-        sourceData.map((d, idx) => ({
-          key: idx,
-          id: idx,
-          category: d.category,
-          amount: d.amount,
-          type: d.type,
-          sheet: d.sheet,
-          checked: true,
-        }))
-      );
+      fetch(`/api/expenses?filter=${sourceMonth}&pageSize=200`, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(result => {
+          setItems(
+            (result.data || []).map((d, idx) => ({
+              key: idx,
+              id: idx,
+              category: d.category,
+              amount: d.amount,
+              type: d.type,
+              sheet: d.sheet,
+              checked: true,
+            }))
+          );
+        })
+        .catch(() => setItems([]));
     } else {
       setItems([]);
     }
-  }, [sourceMonth, rawData]);
+  }, [sourceMonth]);
 
   // Handle saving
   const handleSave = () => {
@@ -62,18 +67,19 @@ export default function CopyMonthModal({ open, onClose }) {
       return;
     }
 
-    // Dispatch the action
-    dispatch(
-      copyMonthExpenses({
-        targetMonth,
-        items: activeItems.map(item => ({
+    // Dispatch individual createExpense for each selected item
+    activeItems.forEach(item => {
+      dispatch({
+        type: 'expenses/createExpense',
+        payload: {
           category: item.category,
           amount: parseFloat(item.amount) || 0,
           type: item.type,
           sheet: item.sheet,
-        })),
-      })
-    );
+          month: targetMonth,
+        },
+      });
+    });
 
     message.success(`Copied template to ${targetMonth} successfully!`);
     onClose();

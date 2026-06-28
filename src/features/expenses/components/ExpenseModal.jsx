@@ -3,7 +3,6 @@ import { useSelector, useDispatch } from 'react-redux';
 import { Modal, Form, Input, DatePicker, InputNumber, Select, Tag, Button, Alert, Row, Col, Checkbox, AutoComplete } from 'antd';
 import { ThunderboltOutlined, CheckCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { addExpense, updateExpense, undoAction, propagateYearlyExpense, propagateRangeExpense } from '../expensesSlice';
 import { parseNLPInput, guessType } from '../../../utils/nlpParser';
 
 const { Option } = Select;
@@ -21,9 +20,9 @@ const formatINR = (num) => {
   return '₹' + Math.round(num).toLocaleString('en-IN');
 };
 
-export default function ExpenseModal({ open, onClose, editIndex }) {
+export default function ExpenseModal({ open, onClose, editRecord }) {
   const dispatch = useDispatch();
-  const rawData = useSelector(state => state.expenses.rawData);
+  const allCategories = useSelector(state => state.expenses.analytics.allCategories);
   const [form] = Form.useForm();
   const selectedMonth = Form.useWatch('month', form);
   const [isRangeMode, setIsRangeMode] = useState(false);
@@ -31,27 +30,24 @@ export default function ExpenseModal({ open, onClose, editIndex }) {
   const [nlpText, setNlpText] = useState('');
   const [nlpParsed, setNlpParsed] = useState(null);
 
-  const isEdit = editIndex !== null && editIndex >= 0;
+  const isEdit = !!editRecord;
 
-  // Extract unique categories from raw data
-  const knownCategories = [...new Set(rawData.map(d => d.category))].sort();
+  // Extract unique categories from analytics (server-provided)
+  const knownCategories = allCategories;
 
   // Sync edit mode pre-fill
   useEffect(() => {
     if (open) {
       setIsRangeMode(false);
-      if (isEdit) {
-        const item = rawData[editIndex];
-        if (item) {
-          form.setFieldsValue({
-            month: dayjs(item.month, 'YYYY-MM'),
-            monthRange: null,
-            amount: item.amount,
-            category: item.category,
-            type: item.type,
-            propagateYearly: false
-          });
-        }
+      if (isEdit && editRecord) {
+        form.setFieldsValue({
+          month: dayjs(editRecord.month, 'YYYY-MM'),
+          monthRange: null,
+          amount: editRecord.amount,
+          category: editRecord.category,
+          type: editRecord.type,
+          propagateYearly: false
+        });
       } else {
         // Create Mode
         form.resetFields();
@@ -65,18 +61,17 @@ export default function ExpenseModal({ open, onClose, editIndex }) {
       setNlpText('');
       setNlpParsed(null);
     }
-  }, [open, editIndex, isEdit, rawData, form]);
+  }, [open, editRecord, isEdit, form]);
 
   // NLP Parser trigger
   useEffect(() => {
     if (nlpText.trim().length >= 3) {
-      const knownCategories = [...new Set(rawData.map(d => d.category))];
       const parsed = parseNLPInput(nlpText, knownCategories);
       setNlpParsed(parsed);
     } else {
       setNlpParsed(null);
     }
-  }, [nlpText, rawData]);
+  }, [nlpText, knownCategories]);
 
   // Apply NLP Parsed data
   const handleApplyNLP = () => {
@@ -119,26 +114,14 @@ export default function ExpenseModal({ open, onClose, editIndex }) {
     form.setFieldsValue({ type });
   };
 
-  // Build Top 6 Templates
+  // Build Top 6 Templates from known categories (static list)
   const getTemplates = () => {
-    const catFreq = {};
-    rawData.forEach(d => {
-      if (!catFreq[d.category]) {
-        catFreq[d.category] = { count: 0, total: 0, type: d.type };
-      }
-      catFreq[d.category].count++;
-      catFreq[d.category].total += d.amount;
-    });
-
-    return Object.entries(catFreq)
-      .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 6)
-      .map(([category, details]) => ({
-        category,
-        amount: Math.round(details.total / details.count),
-        type: details.type,
-        icon: ICONS[category] || (details.type === 'EMI' ? '🏦' : details.type === 'Saving' ? '🐷' : '💰')
-      }));
+    return knownCategories.slice(0, 6).map(cat => ({
+      category: cat,
+      amount: 5000,
+      type: guessType(cat),
+      icon: ICONS[cat] || '💰'
+    }));
   };
 
   const templates = getTemplates();
@@ -161,39 +144,32 @@ export default function ExpenseModal({ open, onClose, editIndex }) {
     };
 
     if (isRangeMode && values.monthRange) {
+      // Range mode: dispatch bulkSync after building all months
       const [start, end] = values.monthRange;
       const monthsList = [];
       let current = start.startOf('month');
       const last = end.startOf('month');
-
       while (current.isBefore(last) || current.isSame(last, 'month')) {
         monthsList.push(current.format('YYYY-MM'));
         current = current.add(1, 'month');
       }
-
-      dispatch(propagateRangeExpense({
-        months: monthsList,
-        category: payload.category,
-        amount: payload.amount,
-        type: payload.type
-      }));
+      // Create each month as individual expense
+      monthsList.forEach(month => {
+        dispatch({ type: 'expenses/createExpense', payload: { ...payload, month } });
+      });
     } else if (values.propagateYearly && values.month) {
       const year = values.month.format('YYYY');
-      dispatch(propagateYearlyExpense({
-        year,
-        category: payload.category,
-        amount: payload.amount,
-        type: payload.type
-      }));
+      // Create for all 12 months
+      Array.from({ length: 12 }, (_, i) => {
+        const month = `${year}-${String(i + 1).padStart(2, '0')}`;
+        dispatch({ type: 'expenses/createExpense', payload: { ...payload, month } });
+      });
     } else if (values.month) {
-      const singlePayload = {
-        ...payload,
-        month: values.month.format('YYYY-MM')
-      };
+      const singlePayload = { ...payload, month: values.month.format('YYYY-MM') };
       if (isEdit) {
-        dispatch(updateExpense({ index: editIndex, data: singlePayload }));
+        dispatch({ type: 'expenses/updateExpense', payload: { uuid: editRecord.uuid, data: singlePayload, oldSnapshot: editRecord } });
       } else {
-        dispatch(addExpense(singlePayload));
+        dispatch({ type: 'expenses/createExpense', payload: singlePayload });
       }
     }
 
