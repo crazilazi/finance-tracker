@@ -184,7 +184,7 @@ export default function InsightsTab() {
         <Col xs={24} sm={12} xl={6} key={idx}>
           <Card
             className="bg-dark-card border-dark-border text-white shadow-xl h-full flex flex-col justify-between hover:border-indigo-500/50 transition-colors duration-300"
-            styles={{ body: {{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', padding: 20 } }}}
+            styles={{ body: { display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', padding: 20 } }}
           >
             <div>
               <div className="flex items-center gap-3 mb-3">
