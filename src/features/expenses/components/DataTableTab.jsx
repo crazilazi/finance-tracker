@@ -372,11 +372,18 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
           `}</style>
           
           <div className="flex flex-col border-r border-gray-600/50 pr-6 mr-2">
-            <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider mb-1">{selectedRowKeys.length} items</span>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider">Net Flow</span>
+              <span className="bg-gray-800 text-gray-400 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold">{selectedRowKeys.length} items</span>
+            </div>
             <span className={`text-lg font-black leading-none ${netSelected < 0 ? 'text-green-400' : 'text-white'}`}>
               {netSelected < 0 ? '+' : ''}{formatINR(Math.abs(netSelected))}
             </span>
-            <span className="text-gray-500 text-[9px] uppercase mt-1 tracking-wider">{netSelected <= 0 ? 'Net Income' : 'Net Spend'}</span>
+          </div>
+
+          <div className="flex flex-col border-r border-gray-600/50 pr-6 mr-2">
+            <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Total Spent</span>
+            <span className="text-white text-lg font-black leading-none">{formatINR(totalOutflow)}</span>
           </div>
           
           <div className="flex gap-6 items-center flex-1">
