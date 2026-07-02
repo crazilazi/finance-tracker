@@ -167,13 +167,13 @@ export async function getExpensesPaginated(config, params, username) {
 
   const whereClause = conditions.join(' AND ');
 
-  const querySql = \`
+  const querySql = `
     SELECT uuid, month, category, amount, type, sheet
     FROM Expenses
-    WHERE \${whereClause}
-    ORDER BY \${safeCol} \${safeDir}
-    \${(isExport === 'true' || isExport === true) ? '' : 'OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY'}
-  \`;
+    WHERE ${whereClause}
+    ORDER BY ${safeCol} ${safeDir}
+    ${(isExport === 'true' || isExport === true) ? '' : 'OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY'}
+  `;
 
   const dataResult = await req.query(querySql);
 
