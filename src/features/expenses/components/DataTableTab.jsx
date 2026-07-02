@@ -307,7 +307,6 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
               Reconcile Statement
             </Button>
           )}
-          )}
         </div>
       </div>
 
