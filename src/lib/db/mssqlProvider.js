@@ -391,12 +391,28 @@ export async function createExpense(config, item, username) {
   req.input('sheet', mssql.NVarChar(100), item.sheet || null);
   req.input('username', mssql.NVarChar(100), userVal);
 
-  await req.query(`
-    INSERT INTO Expenses (uuid, month, category, amount, type, sheet, username)
-    VALUES (@uuid, @month, @category, @amount, @type, @sheet, @username)
+  const res = await req.query(`
+    DECLARE @existingUuid VARCHAR(50);
+    SELECT @existingUuid = uuid FROM Expenses WHERE month = @month AND category = @category AND username = @username;
+
+    IF @existingUuid IS NOT NULL
+    BEGIN
+      UPDATE Expenses
+      SET amount = @amount, type = @type, sheet = @sheet
+      WHERE uuid = @existingUuid;
+      SELECT @existingUuid AS finalUuid;
+    END
+    ELSE
+    BEGIN
+      INSERT INTO Expenses (uuid, month, category, amount, type, sheet, username)
+      VALUES (@uuid, @month, @category, @amount, @type, @sheet, @username);
+      SELECT @uuid AS finalUuid;
+    END
   `);
 
-  return { success: true, data: { ...item, uuid: uuidVal, username: userVal } };
+  const finalUuid = res.recordset[0]?.finalUuid || uuidVal;
+
+  return { success: true, data: { ...item, uuid: finalUuid, username: userVal } };
 }
 
 export async function updateExpense(config, uuid, item, username) {
