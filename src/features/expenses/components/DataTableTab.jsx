@@ -39,6 +39,10 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
 
   const selectedRows = tableData.filter(d => selectedRowKeys.includes(d.uuid));
   const selectedSum = selectedRows.reduce((acc, row) => acc + row.amount, 0);
+  const sumsByType = selectedRows.reduce((acc, row) => {
+    acc[row.type] = (acc[row.type] || 0) + row.amount;
+    return acc;
+  }, {});
 
   const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
 
@@ -364,9 +368,26 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
             }
           `}</style>
           
-          <div className="flex flex-col">
-            <span className="text-gray-300 text-xs font-semibold uppercase tracking-wider">{selectedRowKeys.length} selected</span>
-            <span className="text-white text-lg font-bold">Sum: <span className="text-indigo-400">{formatINR(selectedSum)}</span></span>
+          <div className="flex flex-col border-r border-gray-600/50 pr-6 mr-2">
+            <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider mb-1">{selectedRowKeys.length} items</span>
+            <span className="text-white text-lg font-black leading-none">{formatINR(selectedSum)}</span>
+          </div>
+          
+          <div className="flex gap-6 items-center flex-1">
+            {Object.entries(sumsByType).map(([type, amount]) => {
+               let color = 'text-gray-300';
+               if (type === 'Income') color = 'text-green-400';
+               else if (type === 'Expense') color = 'text-red-400';
+               else if (type === 'Saving') color = 'text-blue-400';
+               else if (type === 'EMI') color = 'text-orange-400';
+               
+               return (
+                 <div key={type} className="flex flex-col">
+                   <span className="text-gray-500 text-[10px] uppercase font-bold">{type}</span>
+                   <span className={`text-sm font-semibold ${color}`}>{formatINR(amount)}</span>
+                 </div>
+               )
+            })}
           </div>
 
           <div className="flex gap-3">
