@@ -37,6 +37,9 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
     onChange: (keys) => setSelectedRowKeys(keys)
   };
 
+  const selectedRows = tableData.filter(d => selectedRowKeys.includes(d.uuid));
+  const selectedSum = selectedRows.reduce((acc, row) => acc + row.amount, 0);
+
   const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
 
   const formatMonth = (m) => {
@@ -304,26 +307,6 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
               Reconcile Statement
             </Button>
           )}
-          {selectedRowKeys.length > 0 && (
-            <Popconfirm
-              title={`Delete ${selectedRowKeys.length} selected items?`}
-              description="Are you sure you want to delete these records?"
-              onConfirm={handleBulkDelete}
-              okText="Yes"
-              cancelText="No"
-              placement="topRight"
-            >
-              <span className="inline-flex">
-                <Button
-                  type="primary"
-                  danger
-                  icon={<DeleteOutlined />}
-                  style={{ borderRadius: 8, height: 38 }}
-                >
-                  Delete Selected ({selectedRowKeys.length})
-                </Button>
-              </span>
-            </Popconfirm>
           )}
         </div>
       </div>
@@ -362,6 +345,56 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
         className="dark-table"
         locale={{ emptyText: <div className="text-gray-500">No records found.</div> }}
       />
+
+      {/* Floating Selection Bar */}
+      {selectedRowKeys.length > 0 && (
+        <div 
+          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center justify-between gap-6 px-6 py-3 rounded-2xl shadow-2xl transition-all duration-300"
+          style={{ 
+            background: 'rgba(30, 41, 59, 0.85)', 
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            minWidth: '400px',
+            animation: 'slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+          }}
+        >
+          <style>{`
+            @keyframes slideUpFade {
+              from { opacity: 0; transform: translate(-50%, 20px); }
+              to { opacity: 1; transform: translate(-50%, 0); }
+            }
+          `}</style>
+          
+          <div className="flex flex-col">
+            <span className="text-gray-300 text-xs font-semibold uppercase tracking-wider">{selectedRowKeys.length} selected</span>
+            <span className="text-white text-lg font-bold">Sum: <span className="text-indigo-400">{formatINR(selectedSum)}</span></span>
+          </div>
+
+          <div className="flex gap-3">
+            <Button 
+              type="text" 
+              onClick={() => setSelectedRowKeys([])}
+              style={{ color: '#9ca3af' }}
+              className="hover:text-white hover:bg-gray-700/50"
+            >
+              Clear
+            </Button>
+            <Popconfirm
+              title={`Delete ${selectedRowKeys.length} items?`}
+              description="This action cannot be undone."
+              onConfirm={handleBulkDelete}
+              okText="Delete"
+              cancelText="Cancel"
+              placement="top"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="primary" danger icon={<DeleteOutlined />} style={{ borderRadius: 8 }}>
+                Delete
+              </Button>
+            </Popconfirm>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
