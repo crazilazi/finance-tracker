@@ -38,11 +38,14 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
   };
 
   const selectedRows = tableData.filter(d => selectedRowKeys.includes(d.uuid));
-  const selectedSum = selectedRows.reduce((acc, row) => acc + row.amount, 0);
   const sumsByType = selectedRows.reduce((acc, row) => {
     acc[row.type] = (acc[row.type] || 0) + row.amount;
     return acc;
   }, {});
+  
+  const totalIncome = sumsByType['Income'] || 0;
+  const totalOutflow = (sumsByType['Expense'] || 0) + (sumsByType['EMI'] || 0) + (sumsByType['Saving'] || 0);
+  const netSelected = totalOutflow - totalIncome;
 
   const formatINR = (num) => hideAmounts ? '₹•••••' : '₹' + Math.round(num).toLocaleString('en-IN');
 
@@ -370,7 +373,10 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
           
           <div className="flex flex-col border-r border-gray-600/50 pr-6 mr-2">
             <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider mb-1">{selectedRowKeys.length} items</span>
-            <span className="text-white text-lg font-black leading-none">{formatINR(selectedSum)}</span>
+            <span className={`text-lg font-black leading-none ${netSelected < 0 ? 'text-green-400' : 'text-white'}`}>
+              {netSelected < 0 ? '+' : ''}{formatINR(Math.abs(netSelected))}
+            </span>
+            <span className="text-gray-500 text-[9px] uppercase mt-1 tracking-wider">{netSelected <= 0 ? 'Net Income' : 'Net Spend'}</span>
           </div>
           
           <div className="flex gap-6 items-center flex-1">
