@@ -65,9 +65,9 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
     );
     dispatch({ type: 'expenses/deleteExpense', payload: { uuid: record.uuid, snapshot: record } });
     notification.success({
-      message: 'Expense Deleted',
+      title: 'Expense Deleted',
       description: `Removed ${record.category} — ${formatINR(record.amount)}`,
-      btn,
+      actions: btn,
       key,
       duration: 5
     });
