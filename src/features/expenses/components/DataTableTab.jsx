@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification, message, Spin } from 'antd';
+import { Card, Table, Input, Select, Button, Popconfirm, Tag, Spin, App } from 'antd';
 import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, SyncOutlined, ExportOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import {
@@ -13,6 +13,7 @@ import {
 const { Option } = Select;
 
 export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, onReconcile }) {
+  const { message, notification } = App.useApp();
   const dispatch = useDispatch();
   const tableData = useSelector(state => state.expenses.tableData);
   const tableTotalCount = useSelector(state => state.expenses.tableTotalCount);
