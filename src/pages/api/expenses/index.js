@@ -45,10 +45,12 @@ export default async function handler(req, res) {
       query = '',
     } = req.query;
 
+    const isExport = req.query.export === 'true';
+
     try {
       const result = await dbProvider.getExpensesPaginated(
         dbConfig,
-        { filter, page: parseInt(page), pageSize: parseInt(pageSize), sortCol, sortDir, type, category, search, query },
+        { filter, page: parseInt(page), pageSize: parseInt(pageSize), sortCol, sortDir, type, category, search, query, isExport },
         rootDir,
         user.username
       );

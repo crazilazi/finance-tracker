@@ -131,6 +131,7 @@ export async function getExpensesPaginated(config, params, username) {
     category = 'all',
     search = '',
     query = '',
+    isExport = false,
   } = params;
 
   const offset = (parseInt(page) - 1) * parseInt(pageSize);
@@ -166,13 +167,15 @@ export async function getExpensesPaginated(config, params, username) {
 
   const whereClause = conditions.join(' AND ');
 
-  const dataResult = await req.query(`
+  const querySql = \`
     SELECT uuid, month, category, amount, type, sheet
     FROM Expenses
-    WHERE ${whereClause}
-    ORDER BY ${safeCol} ${safeDir}
-    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
-  `);
+    WHERE \${whereClause}
+    ORDER BY \${safeCol} \${safeDir}
+    \${(isExport === 'true' || isExport === true) ? '' : 'OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY'}
+  \`;
+
+  const dataResult = await req.query(querySql);
 
   const countReq = pool.request();
   buildFilterConditions(countReq, filter, username);
@@ -294,6 +297,36 @@ export async function getAnalytics(config, params, username) {
   const allYears = allYearsResult.recordset.map(r => r.year);
   const allMonths = allMonthsResult.recordset.map(r => r.month);
 
+  // Calculate opening balance based on filter start month
+  let openingBalance = 0;
+  if (filter && filter !== 'all') {
+    const obReq = pool.request();
+    obReq.input('username', mssql.NVarChar(100), username || 'Default User');
+    let cutoffStr = null;
+    if (filter.startsWith('last')) {
+      const n = parseInt(filter.replace('last', ''));
+      const today = new Date();
+      let year = today.getFullYear();
+      let month = (today.getMonth() + 1) - (n - 1);
+      while (month <= 0) { month += 12; year -= 1; }
+      cutoffStr = `${year}-${String(month).padStart(2, '0')}`;
+    } else if (filter.length === 4) {
+      cutoffStr = `${filter}-01`;
+    } else {
+      cutoffStr = filter; // e.g. '2025-06'
+    }
+
+    if (cutoffStr) {
+      obReq.input('cutoffStr', mssql.VarChar(7), cutoffStr);
+      const obResult = await obReq.query(`
+        SELECT SUM(CASE WHEN type = 'Income' THEN amount ELSE -amount END) as bal
+        FROM Expenses
+        WHERE username = @username AND month < @cutoffStr
+      `);
+      openingBalance = obResult.recordset[0]?.bal || 0;
+    }
+  }
+
   return {
     monthlyTotals,
     months,
@@ -301,6 +334,7 @@ export async function getAnalytics(config, params, username) {
     allCategories,
     allYears,
     allMonths,
+    openingBalance,
     rawForAnomalies: anomalyRaw.recordset,
   };
 }

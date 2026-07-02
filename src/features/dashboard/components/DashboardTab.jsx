@@ -50,6 +50,7 @@ export default function DashboardTab() {
     categoryTotals = [],
     healthScore = 0,
     healthMetrics = { savingsRate: 0, emiBurden: 0, stability: 0, anomalyScore: 0 },
+    openingBalance = 0,
   } = analytics;
 
   const handleCardClick = (type) => {
@@ -76,6 +77,7 @@ export default function DashboardTab() {
 
   const totalSaving = months.reduce((sum, m) => sum + (monthlyTotals[m]?.Saving || 0), 0);
   const netBalance = totalIncome - (totalSpent + totalSaving);
+  const availableBalance = openingBalance + netBalance;
 
   // Sparklines derived from monthlyTotals
   const sparklineIncome = months.map(m => {
@@ -264,8 +266,8 @@ export default function DashboardTab() {
           <Card className="bg-dark-card border-dark-border text-white shadow-xl hover:-translate-y-0.5 transition-all duration-300">
             <div className="flex justify-between items-start">
               <div>
-                <div className="text-gray-400 font-semibold text-xs mb-1">Net Balance</div>
-                <div className={`text-2xl font-black ${netBalance >= 0 ? 'text-cyan-400' : 'text-orange-500'}`}>{formatINR(netBalance)}</div>
+                <div className="text-gray-400 font-semibold text-xs mb-1">Available Funds</div>
+                <div className={`text-2xl font-black ${availableBalance >= 0 ? 'text-cyan-400' : 'text-orange-500'}`}>{formatINR(availableBalance)}</div>
               </div>
               <div className="bg-cyan-500/10 p-2 rounded-xl text-lg text-cyan-400 leading-none">⚖️</div>
             </div>
@@ -273,9 +275,13 @@ export default function DashboardTab() {
               {getMomTrend(sparklineNet)}
               <Sparkline data={sparklineNet} color={COLORS.cyan} />
             </div>
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="text-[10px] text-gray-400">
+                Opening: <span className={openingBalance >= 0 ? 'text-green-400' : 'text-red-400'}>{formatINR(openingBalance)}</span>
+                {' '}| Flow: <span className={netBalance >= 0 ? 'text-green-400' : 'text-red-400'}>{formatINR(netBalance)}</span>
+              </span>
               <span onClick={() => handleCardClick('all')} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer transition-colors">
-                View Details ➜
+                Details ➜
               </span>
             </div>
           </Card>

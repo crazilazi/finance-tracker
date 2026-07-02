@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Card, Table, Input, Select, Button, Popconfirm, Tag, notification, message, Spin } from 'antd';
-import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, SyncOutlined } from '@ant-design/icons';
+import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, SyncOutlined, ExportOutlined } from '@ant-design/icons';
+import * as XLSX from 'xlsx';
 import {
   setTableFilters,
   setSort,
@@ -25,6 +26,8 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
   const anomalies = useSelector(state => state.expenses.analytics.anomalies);
   const allCategories = useSelector(state => state.expenses.analytics.allCategories);
   const allYears = useSelector(state => state.expenses.analytics.allYears);
+  const globalFilter = useSelector(state => state.expenses.filter);
+  const globalQuery = useSelector(state => state.expenses.query);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
@@ -83,6 +86,37 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
     });
     setSelectedRowKeys([]);
     message.success(`Successfully deleted ${uuids.length} selected records!`);
+  };
+
+  const handleExport = async () => {
+    try {
+      message.loading({ content: 'Generating Export...', key: 'exporting' });
+      const params = new URLSearchParams({
+        filter: globalFilter,
+        type: tableFilters.type,
+        category: tableFilters.category,
+        search: tableFilters.search,
+        query: globalQuery,
+        sortCol,
+        sortDir,
+        export: 'true'
+      });
+      const res = await fetch(`/api/expenses?${params.toString()}`);
+      const result = await res.json();
+      if (!result.data) throw new Error('No data returned');
+      const ws = XLSX.utils.json_to_sheet(result.data.map(row => ({
+        Month: formatMonth(row.month),
+        Category: row.category,
+        Type: row.type,
+        Amount: row.amount
+      })));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Expenses");
+      XLSX.writeFile(wb, "GaddiTracker_Export.xlsx");
+      message.success({ content: 'Export complete!', key: 'exporting' });
+    } catch (e) {
+      message.error({ content: 'Export failed: ' + e.message, key: 'exporting' });
+    }
   };
 
   const columns = [
@@ -248,9 +282,17 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
               onClick={onScanMissing}
               style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #374151', color: '#f3f4f6', borderRadius: 8, height: 38 }}
             >
-              Scan Missing Year Data
+              Scan Missing
             </Button>
           )}
+          <Button
+            type="default"
+            icon={<ExportOutlined />}
+            onClick={handleExport}
+            style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#10b981', borderRadius: 8, height: 38 }}
+          >
+            Export
+          </Button>
           {onReconcile && (
             <Button
               type="primary"
