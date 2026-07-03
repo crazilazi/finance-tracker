@@ -6,12 +6,24 @@ let poolPromise = null;
 function getPool(config) {
   if (poolPromise) return poolPromise;
 
+  let srv = config.server || 'localhost';
+  let port = 1433;
+  
+  // Clean up Azure connection strings like "tcp:server.database.windows.net,1433"
+  if (srv.startsWith('tcp:')) srv = srv.replace('tcp:', '');
+  if (srv.includes(',')) {
+    const parts = srv.split(',');
+    srv = parts[0];
+    port = parseInt(parts[1], 10);
+  }
+
   const sqlConfig = {
-    server: config.server || 'localhost',
+    server: srv,
+    port: port,
     database: config.database || 'GaddiTracker',
     options: {
-      encrypt: false,
-      trustServerCertificate: config.trustServerCertificate === 'true',
+      encrypt: srv.includes('database.windows.net') ? true : false,
+      trustServerCertificate: String(config.trustServerCertificate) === 'true',
     },
   };
 
