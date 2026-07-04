@@ -32,6 +32,8 @@ jobs:
           cp -r public .next/standalone/public
           mkdir -p .next/standalone/.next
           cp -r .next/static .next/standalone/.next/static
+          # Rewrite start script so Azure runs node server.js instead of next start
+          sed -i 's/"start": "next start"/"start": "node server.js"/' .next/standalone/package.json
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
