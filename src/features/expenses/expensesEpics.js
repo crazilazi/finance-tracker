@@ -1,6 +1,6 @@
 import { ofType } from 'redux-observable';
 import { from, of, EMPTY } from 'rxjs';
-import { map, mergeMap, tap, withLatestFrom, switchMap, debounceTime } from 'rxjs/operators';
+import { map, mergeMap, tap, withLatestFrom, switchMap, debounceTime, catchError } from 'rxjs/operators';
 import {
   setUser,
   logoutUser,
@@ -60,7 +60,10 @@ export const fetchTableDataEpic = (action$, state$) =>
       const url = buildTableUrl(state);
       return from(
         fetch(url, { credentials: 'same-origin' }).then(res => {
-          if (!res.ok) throw new Error('Table fetch failed: ' + res.status);
+          if (!res.ok) {
+            if (res.status === 401) throw new Error('401');
+            throw new Error('Table fetch failed: ' + res.status);
+          }
           return res.json();
         })
       ).pipe(
@@ -70,6 +73,13 @@ export const fetchTableDataEpic = (action$, state$) =>
             setTableData({ data, total }),
             setTableCacheEntry({ key: cacheKey, data, total })
           );
+        }),
+        catchError(err => {
+          if (err.message === '401') {
+            return of(logoutUser());
+          }
+          console.error(err);
+          return EMPTY;
         })
       );
     })
@@ -90,7 +100,10 @@ export const fetchAnalyticsEpic = (action$, state$) =>
       const url = buildAnalyticsUrl(state);
       return from(
         fetch(url, { credentials: 'same-origin' }).then(res => {
-          if (!res.ok) throw new Error('Analytics fetch failed: ' + res.status);
+          if (!res.ok) {
+            if (res.status === 401) throw new Error('401');
+            throw new Error('Analytics fetch failed: ' + res.status);
+          }
           return res.json();
         })
       ).pipe(
@@ -99,6 +112,13 @@ export const fetchAnalyticsEpic = (action$, state$) =>
             setAnalytics(analytics),
             setAnalyticsCacheEntry({ key: cacheKey, analytics })
           );
+        }),
+        catchError(err => {
+          if (err.message === '401') {
+            return of(logoutUser());
+          }
+          console.error(err);
+          return EMPTY;
         })
       );
     })

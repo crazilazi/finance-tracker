@@ -133,7 +133,6 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
         placement="left"
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
-        width={260}
         closable={false}
         className="sidebar-mobile-drawer"
         styles={{
