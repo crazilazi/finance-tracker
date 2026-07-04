@@ -6,6 +6,11 @@ let poolPromise = null;
 function getPool(config) {
   if (poolPromise) return poolPromise;
 
+  if (config.connectionString) {
+    poolPromise = mssql.connect(config.connectionString);
+    return poolPromise;
+  }
+
   let srv = config.server || 'localhost';
   let port = 1433;
   

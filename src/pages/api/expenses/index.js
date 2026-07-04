@@ -2,11 +2,7 @@ import * as dbProvider from '../../../lib/db/dbProvider';
 
 const dbConfig = {
   dataSource: process.env.DATA_SOURCE || 'json',
-  server: process.env.DB_SERVER || 'localhost',
-  database: process.env.DB_DATABASE || 'GaddiTracker',
-  user: process.env.DB_USER || 'sa',
-  password: process.env.DB_PASSWORD || 'sa',
-  trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === 'true' || true,
+  connectionString: process.env.DATABASE_URL,
 };
 
 function getSessionUser(req) {
