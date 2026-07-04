@@ -69,12 +69,11 @@ Create a `.env` file in the root project directory:
 # Data Source Mode: 'mssql' or 'json'
 DATA_SOURCE=mssql
 
-# Local Microsoft SQL Server details
-DB_SERVER=localhost
-DB_DATABASE=GaddiTracker
-DB_USER=sa
-DB_PASSWORD=your_password_here
-DB_TRUST_SERVER_CERTIFICATE=true
+# Microsoft SQL Server connection string
+DATABASE_URL="Server=your-server.database.windows.net;Database=tracker;User Id=user;Password=pass;Encrypt=true;TrustServerCertificate=false;"
+
+# JWT Secret for securing local and oauth sessions
+JWT_SECRET=super-secret-local-dev-key-12345!
 
 # GitHub OAuth 2.0 (Leave blank to use interactive Mock OAuth 2.0)
 GITHUB_CLIENT_ID=
