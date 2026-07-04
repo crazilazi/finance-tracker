@@ -3,44 +3,56 @@ import crypto from 'crypto';
 
 let poolPromise = null;
 
+async function initPool(config) {
+  let pool;
+  if (config.connectionString) {
+    pool = await mssql.connect(config.connectionString);
+  } else {
+    let srv = config.server || 'localhost';
+    let port = 1433;
+    
+    // Clean up Azure connection strings like "tcp:server.database.windows.net,1433"
+    if (srv.startsWith('tcp:')) srv = srv.replace('tcp:', '');
+    if (srv.includes(',')) {
+      const parts = srv.split(',');
+      srv = parts[0];
+      port = parseInt(parts[1], 10);
+    }
+
+    const sqlConfig = {
+      server: srv,
+      port: port,
+      database: config.database || 'GaddiTracker',
+      options: {
+        encrypt: srv.includes('database.windows.net') ? true : false,
+        trustServerCertificate: String(config.trustServerCertificate) === 'true',
+      },
+      pool: {
+        max: 10,
+        min: 1, // Keep a minimum of 1 connection alive to prevent cold starts
+        idleTimeoutMillis: 30000
+      }
+    };
+
+    if (config.user && config.password) {
+      sqlConfig.user = config.user;
+      sqlConfig.password = config.password;
+    } else {
+      sqlConfig.user = 'sa';
+      sqlConfig.password = 'sa';
+    }
+
+    pool = await mssql.connect(sqlConfig);
+  }
+  
+  // Initialize tables only once per application lifecycle
+  await ensureTableExists(pool);
+  return pool;
+}
+
 function getPool(config) {
   if (poolPromise) return poolPromise;
-
-  if (config.connectionString) {
-    poolPromise = mssql.connect(config.connectionString);
-    return poolPromise;
-  }
-
-  let srv = config.server || 'localhost';
-  let port = 1433;
-  
-  // Clean up Azure connection strings like "tcp:server.database.windows.net,1433"
-  if (srv.startsWith('tcp:')) srv = srv.replace('tcp:', '');
-  if (srv.includes(',')) {
-    const parts = srv.split(',');
-    srv = parts[0];
-    port = parseInt(parts[1], 10);
-  }
-
-  const sqlConfig = {
-    server: srv,
-    port: port,
-    database: config.database || 'GaddiTracker',
-    options: {
-      encrypt: srv.includes('database.windows.net') ? true : false,
-      trustServerCertificate: String(config.trustServerCertificate) === 'true',
-    },
-  };
-
-  if (config.user && config.password) {
-    sqlConfig.user = config.user;
-    sqlConfig.password = config.password;
-  } else {
-    sqlConfig.user = 'sa';
-    sqlConfig.password = 'sa';
-  }
-
-  poolPromise = mssql.connect(sqlConfig);
+  poolPromise = initPool(config);
   return poolPromise;
 }
 
@@ -121,7 +133,6 @@ function buildFilterConditions(req, filter, username) {
 
 export async function getExpenses(config, username) {
   const pool = await getPool(config);
-  await ensureTableExists(pool);
 
   const request = pool.request();
   request.input('username', mssql.NVarChar(100), username || 'Default User');
@@ -136,7 +147,6 @@ export async function getExpenses(config, username) {
  */
 export async function getExpensesPaginated(config, params, username) {
   const pool = await getPool(config);
-  await ensureTableExists(pool);
 
   const {
     filter = 'all',
@@ -220,7 +230,6 @@ export async function getExpensesPaginated(config, params, username) {
  */
 export async function getAnalytics(config, params, username) {
   const pool = await getPool(config);
-  await ensureTableExists(pool);
 
   const { filter = 'all', query = '' } = params;
 
@@ -358,7 +367,6 @@ export async function getAnalytics(config, params, username) {
 
 export async function saveExpenses(config, data, username) {
   const pool = await getPool(config);
-  await ensureTableExists(pool);
 
   const userVal = username || 'Default User';
 
@@ -395,7 +403,6 @@ export async function saveExpenses(config, data, username) {
 
 export async function createExpense(config, item, username) {
   const pool = await getPool(config);
-  await ensureTableExists(pool);
   const userVal = username || 'Default User';
 
   const uuidVal = item.uuid || crypto.randomUUID();
@@ -434,7 +441,6 @@ export async function createExpense(config, item, username) {
 
 export async function updateExpense(config, uuid, item, username) {
   const pool = await getPool(config);
-  await ensureTableExists(pool);
   const userVal = username || 'Default User';
 
   const req = pool.request();
@@ -457,7 +463,6 @@ export async function updateExpense(config, uuid, item, username) {
 
 export async function deleteExpense(config, uuid, username) {
   const pool = await getPool(config);
-  await ensureTableExists(pool);
   const userVal = username || 'Default User';
 
   const req = pool.request();
