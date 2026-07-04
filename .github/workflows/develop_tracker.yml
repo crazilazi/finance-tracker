@@ -28,18 +28,21 @@ jobs:
           npm install
           npm run build --if-present
           npm run test --if-present
-          # Copy static files to the standalone directory for Azure
+          # Copy static files to the standalone directory
           cp -r public .next/standalone/public
           mkdir -p .next/standalone/.next
           cp -r .next/static .next/standalone/.next/static
           # Rewrite start script so Azure runs node server.js instead of next start
           sed -i 's/"start": "next start"/"start": "node server.js"/' .next/standalone/package.json
+          # Manually zip to prevent Azure from ignoring the .next hidden folder!
+          cd .next/standalone
+          zip -r ../../deployment.zip .
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .next/standalone
+          path: deployment.zip
 
   deploy:
     runs-on: ubuntu-latest
@@ -67,4 +70,4 @@ jobs:
         with:
           app-name: 'tracker'
           slot-name: 'Production'
-          package: .
+          package: deployment.zip
