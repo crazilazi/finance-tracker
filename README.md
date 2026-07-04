@@ -73,7 +73,7 @@ DATA_SOURCE=mssql
 DATABASE_URL="Server=your-server.database.windows.net;Database=tracker;User Id=user;Password=pass;Encrypt=true;TrustServerCertificate=false;"
 
 # JWT Secret for securing local and oauth sessions
-JWT_SECRET=super-secret-local-dev-key-12345!
+JWT_SECRET=
 
 # GitHub OAuth 2.0 (Leave blank to use interactive Mock OAuth 2.0)
 GITHUB_CLIENT_ID=
