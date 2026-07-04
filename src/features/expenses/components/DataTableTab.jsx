@@ -346,83 +346,122 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
       {/* Floating Selection Bar */}
       {selectedRowKeys.length > 0 && (
         <div
-          className="fixed z-50 flex items-center justify-between gap-4 px-4 py-3 rounded-2xl shadow-2xl"
           style={{
+            position: 'fixed',
+            zIndex: 50,
             bottom: isMobile ? 12 : 24,
             left: isMobile ? 12 : '50%',
             right: isMobile ? 12 : 'auto',
             transform: isMobile ? 'none' : 'translateX(-50%)',
-            minWidth: isMobile ? 'auto' : '440px',
-            background: 'rgba(15, 23, 42, 0.95)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            animation: 'slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+            minWidth: isMobile ? 'auto' : '480px',
+            background: 'rgba(10, 15, 30, 0.97)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+            borderRadius: 16,
+            boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.1)',
+            padding: isMobile ? '10px 12px' : '12px 16px',
+            animation: 'slideUpFadeFixed 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
           }}
         >
           <style>{`
-            @keyframes slideUpFade {
-              from { opacity: 0; transform: translate(-50%, 20px); }
-              to { opacity: 1; transform: translate(-50%, 0); }
+            @keyframes slideUpFadeFixed {
+              from { opacity: 0; transform: ${isMobile ? 'translateY(20px)' : 'translateX(-50%) translateY(20px)'}; }
+              to   { opacity: 1; transform: ${isMobile ? 'translateY(0)' : 'translateX(-50%) translateY(0)'}; }
             }
           `}</style>
-          
-          <div className="flex flex-col border-r border-gray-600/50 pr-6 mr-2">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider">Net Flow</span>
-              <span className="bg-gray-800 text-gray-400 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold">{selectedRowKeys.length} items</span>
+
+          {/* Top Row: Summary Pill + Action Buttons */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            {/* Left: selection count + net flow */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{
+                background: 'rgba(99,102,241,0.2)', color: '#a5b4fc',
+                fontSize: 10, fontWeight: 800, padding: '3px 8px',
+                borderRadius: 99, textTransform: 'uppercase', letterSpacing: '0.06em',
+                border: '1px solid rgba(99,102,241,0.3)', flexShrink: 0
+              }}>
+                {selectedRowKeys.length} selected
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ color: '#6b7280', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Net Flow
+                </span>
+                <span style={{ fontSize: 16, fontWeight: 900, lineHeight: 1, color: netSelected < 0 ? '#34d399' : '#f9fafb' }}>
+                  {netSelected < 0 ? '+' : ''}{formatINR(Math.abs(netSelected))}
+                </span>
+              </div>
+              {!isMobile && totalOutflow > 0 && (
+                <>
+                  <div style={{ width: 1, height: 28, background: 'rgba(255,255,255,0.08)' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ color: '#6b7280', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Spent</span>
+                    <span style={{ fontSize: 14, fontWeight: 900, lineHeight: 1, color: '#f9fafb' }}>{formatINR(totalOutflow)}</span>
+                  </div>
+                </>
+              )}
             </div>
-            <span className={`text-lg font-black leading-none ${netSelected < 0 ? 'text-green-400' : 'text-white'}`}>
-              {netSelected < 0 ? '+' : ''}{formatINR(Math.abs(netSelected))}
-            </span>
-          </div>
 
-          <div className="flex flex-col border-r border-gray-600/50 pr-6 mr-2">
-            <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Total Spent</span>
-            <span className="text-white text-lg font-black leading-none">{formatINR(totalOutflow)}</span>
-          </div>
-          
-          <div className="flex gap-6 items-center flex-1">
-            {Object.entries(sumsByType).map(([type, amount]) => {
-               let color = 'text-gray-300';
-               if (type === 'Income') color = 'text-green-400';
-               else if (type === 'Expense') color = 'text-red-400';
-               else if (type === 'Saving') color = 'text-blue-400';
-               else if (type === 'EMI') color = 'text-orange-400';
-               
-               return (
-                 <div key={type} className="flex flex-col">
-                   <span className="text-gray-500 text-[10px] uppercase font-bold">{type}</span>
-                   <span className={`text-sm font-semibold ${color}`}>{formatINR(amount)}</span>
-                 </div>
-               )
-            })}
-          </div>
-
-          <div className="flex gap-3">
-            <Button 
-              type="text" 
-              onClick={() => setSelectedRowKeys([])}
-              style={{ color: '#9ca3af' }}
-              className="hover:text-white hover:bg-gray-700/50"
-            >
-              Clear
-            </Button>
-            <Popconfirm
-              title={`Delete ${selectedRowKeys.length} items?`}
-              description="This action cannot be undone."
-              onConfirm={handleBulkDelete}
-              okText="Delete"
-              cancelText="Cancel"
-              placement="top"
-              okButtonProps={{ danger: true }}
-            >
-              <Button type="primary" danger icon={<DeleteOutlined />} style={{ borderRadius: 8 }}>
-                Delete
+            {/* Right: Action buttons */}
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <Button
+                type="text"
+                size="small"
+                onClick={() => setSelectedRowKeys([])}
+                style={{ color: '#9ca3af', borderRadius: 8, height: 30, padding: '0 10px', fontSize: 12 }}
+              >
+                Clear
               </Button>
-            </Popconfirm>
+              <Popconfirm
+                title={`Delete ${selectedRowKeys.length} items?`}
+                description="This action cannot be undone."
+                onConfirm={handleBulkDelete}
+                okText="Delete"
+                cancelText="Cancel"
+                placement="top"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="primary" danger icon={<DeleteOutlined />}
+                  size="small"
+                  style={{ borderRadius: 8, height: 30, padding: '0 10px', fontSize: 12 }}
+                >
+                  {!isMobile && 'Delete'}
+                </Button>
+              </Popconfirm>
+            </div>
           </div>
+
+          {/* Bottom Row: Type breakdowns */}
+          {Object.keys(sumsByType).length > 0 && (
+            <div style={{
+              display: 'flex', gap: isMobile ? 10 : 16, marginTop: 8,
+              paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)',
+              flexWrap: 'wrap'
+            }}>
+              {isMobile && totalOutflow > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ color: '#6b7280', fontSize: 9, fontWeight: 700, textTransform: 'uppercase' }}>Spent</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#f9fafb' }}>{formatINR(totalOutflow)}</span>
+                </div>
+              )}
+              {Object.entries(sumsByType).map(([type, amount]) => {
+                let color = '#d1d5db';
+                if (type === 'Income') color = '#34d399';
+                else if (type === 'Expense') color = '#f87171';
+                else if (type === 'Saving') color = '#60a5fa';
+                else if (type === 'EMI') color = '#fb923c';
+                return (
+                  <div key={type} style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ color: '#6b7280', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{type}</span>
+                    <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: 700, color }}>{formatINR(amount)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
+
     </Card>
   );
 }
