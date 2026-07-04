@@ -5,6 +5,7 @@ const nextConfig = {
   transpilePackages: ['antd', '@ant-design', 'rc-util', 'rc-pagination', 'rc-picker', 'rc-tree', 'rc-table'],
   reactStrictMode: true,
   output: "standalone",
+  turbopack: {},
 };
 
 const withPWA = withPWAInit({
