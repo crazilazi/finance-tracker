@@ -6,19 +6,7 @@ const dbConfig = {
   connectionString: process.env.DATABASE_URL,
 };
 
-function getSessionUser(req) {
-  const cookieStr = req.headers.cookie;
-  if (!cookieStr) return null;
-  const match = cookieStr.match(/auth_session=([^;]+)/);
-  if (match) {
-    try {
-      return JSON.parse(decodeURIComponent(match[1]));
-    } catch (e) {
-      return null;
-    }
-  }
-  return null;
-}
+import { getSessionUser } from '../../../lib/auth';
 
 export default async function handler(req, res) {
   const user = getSessionUser(req);

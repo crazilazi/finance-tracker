@@ -7,6 +7,14 @@ export default function handler(req, res) {
     const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=read:user user:email`;
     res.redirect(githubAuthUrl);
   } else {
+    // Block Mock Auth in production
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(500).json({ 
+        error: 'Authentication is not configured.', 
+        message: 'GITHUB_CLIENT_ID is missing in production environment.' 
+      });
+    }
+
     // Fallback to Mock Auth if no client ID is provided
     res.setHeader('Content-Type', 'text/html');
     res.status(200).send(`
