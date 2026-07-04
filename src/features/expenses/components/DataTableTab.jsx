@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Card, Table, Input, Select, Button, Popconfirm, Tag, Spin, App } from 'antd';
 import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, SyncOutlined, ExportOutlined } from '@ant-design/icons';
@@ -31,6 +31,14 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
   const globalQuery = useSelector(state => state.expenses.query);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   const rowSelection = {
     selectedRowKeys,
@@ -208,20 +216,22 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
 
   return (
     <Card className="bg-dark-card border-dark-border text-white shadow-xl">
-      {/* Controls Bar */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+      {/* Controls Bar — mobile-first: all filters wrap naturally */}
+      <div className="flex flex-col gap-2 mb-5">
+        {/* Filters row — wraps on mobile */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Input
-            placeholder="Search expenses..."
+            placeholder="Search..."
             prefix={<SearchOutlined className="text-gray-500" />}
             value={tableFilters.search}
             onChange={(e) => dispatch(setTableFilters({ search: e.target.value }))}
-            className="w-full sm:w-60 search-input"
+            style={{ flex: '1 1 140px', minWidth: 0 }}
+            className="search-input"
           />
           <Select
             value={tableFilters.type}
             onChange={(val) => dispatch(setTableFilters({ type: val }))}
-            className="w-full sm:w-36"
+            style={{ flex: '1 1 100px', minWidth: 0 }}
             classNames={{ popup: { root: "dark-dropdown" } }}
           >
             <Option value="all">All Types</Option>
@@ -233,7 +243,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
           <Select
             value={tableFilters.category}
             onChange={(val) => dispatch(setTableFilters({ category: val }))}
-            className="w-full sm:w-44"
+            style={{ flex: '1 1 130px', minWidth: 0 }}
             classNames={{ popup: { root: "dark-dropdown" } }}
             showSearch
             filterOption={(input, option) =>
@@ -248,7 +258,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
           <Select
             value={tableFilters.year}
             onChange={(val) => dispatch(setTableFilters({ year: val }))}
-            className="w-full sm:w-28"
+            style={{ flex: '0 1 90px', minWidth: 0 }}
             classNames={{ popup: { root: "dark-dropdown" } }}
           >
             <Option value="all">All Years</Option>
@@ -259,59 +269,40 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
           <Select
             value={tableFilters.month}
             onChange={(val) => dispatch(setTableFilters({ month: val }))}
-            className="w-full sm:w-36"
+            style={{ flex: '0 1 90px', minWidth: 0 }}
             classNames={{ popup: { root: "dark-dropdown" } }}
           >
             <Option value="all">All Months</Option>
-            <Option value="01">January</Option>
-            <Option value="02">February</Option>
-            <Option value="03">March</Option>
-            <Option value="04">April</Option>
-            <Option value="05">May</Option>
-            <Option value="06">June</Option>
-            <Option value="07">July</Option>
-            <Option value="08">August</Option>
-            <Option value="09">September</Option>
-            <Option value="10">October</Option>
-            <Option value="11">November</Option>
-            <Option value="12">December</Option>
+            <Option value="01">Jan</Option><Option value="02">Feb</Option>
+            <Option value="03">Mar</Option><Option value="04">Apr</Option>
+            <Option value="05">May</Option><Option value="06">Jun</Option>
+            <Option value="07">Jul</Option><Option value="08">Aug</Option>
+            <Option value="09">Sep</Option><Option value="10">Oct</Option>
+            <Option value="11">Nov</Option><Option value="12">Dec</Option>
           </Select>
+        </div>
+        {/* Action buttons row */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {onCopyTemplate && (
-            <Button
-              type="primary"
-              icon={<CopyOutlined />}
-              onClick={onCopyTemplate}
-              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', border: 'none', borderRadius: 8, height: 38 }}
-            >
-              Copy Month Template
+            <Button type="primary" icon={<CopyOutlined />} onClick={onCopyTemplate}
+              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', border: 'none', borderRadius: 8, height: 34 }}>
+              {!isMobile && 'Copy Month'}
             </Button>
           )}
           {onScanMissing && (
-            <Button
-              type="default"
-              icon={<SearchOutlined />}
-              onClick={onScanMissing}
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #374151', color: '#f3f4f6', borderRadius: 8, height: 38 }}
-            >
-              Scan Missing
+            <Button type="default" icon={<SearchOutlined />} onClick={onScanMissing}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #374151', color: '#f3f4f6', borderRadius: 8, height: 34 }}>
+              {!isMobile && 'Scan Missing'}
             </Button>
           )}
-          <Button
-            type="default"
-            icon={<ExportOutlined />}
-            onClick={handleExport}
-            style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#10b981', borderRadius: 8, height: 38 }}
-          >
-            Export
+          <Button type="default" icon={<ExportOutlined />} onClick={handleExport}
+            style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10b981', borderRadius: 8, height: 34 }}>
+            {!isMobile && 'Export'}
           </Button>
           {onReconcile && (
-            <Button
-              type="primary"
-              icon={<SyncOutlined />}
-              onClick={onReconcile}
-              style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: 8, height: 38 }}
-            >
-              Reconcile Statement
+            <Button type="primary" icon={<SyncOutlined />} onClick={onReconcile}
+              style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: 8, height: 34 }}>
+              {!isMobile && 'Reconcile'}
             </Button>
           )}
         </div>
@@ -319,12 +310,12 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
 
       {/* Main Table — server-paginated */}
       <Table
-        // Slice to pageSize to prevent Antd warnings during transient state updates when changing page sizes
         dataSource={tableData.slice(0, pageSize)}
         columns={columns}
         rowKey="uuid"
         rowSelection={rowSelection}
         loading={tableLoading}
+        scroll={{ x: 480 }}
         pagination={{
           current: dataPage,
           pageSize: pageSize,
@@ -354,13 +345,17 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
 
       {/* Floating Selection Bar */}
       {selectedRowKeys.length > 0 && (
-        <div 
-          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center justify-between gap-6 px-6 py-3 rounded-2xl shadow-2xl transition-all duration-300"
-          style={{ 
-            background: 'rgba(30, 41, 59, 0.85)', 
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            minWidth: '400px',
+        <div
+          className="fixed z-50 flex items-center justify-between gap-4 px-4 py-3 rounded-2xl shadow-2xl"
+          style={{
+            bottom: isMobile ? 12 : 24,
+            left: isMobile ? 12 : '50%',
+            right: isMobile ? 12 : 'auto',
+            transform: isMobile ? 'none' : 'translateX(-50%)',
+            minWidth: isMobile ? 'auto' : '440px',
+            background: 'rgba(15, 23, 42, 0.95)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
             animation: 'slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
           }}
         >

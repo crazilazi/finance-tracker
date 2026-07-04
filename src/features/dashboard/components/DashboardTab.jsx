@@ -180,7 +180,10 @@ export default function DashboardTab() {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'right', labels: { color: '#9ca3af', boxWidth: 10, font: { family: 'Inter', size: 9 } } },
+      legend: {
+        position: 'bottom',
+        labels: { color: '#9ca3af', boxWidth: 10, font: { family: 'Inter', size: 9 }, padding: 8 }
+      },
       tooltip: {
         callbacks: {
           label: (ctx) => hideAmounts ? `${ctx.label}: ₹•••••` : `${ctx.label}: ₹${Math.round(ctx.raw).toLocaleString('en-IN')}`
@@ -292,14 +295,14 @@ export default function DashboardTab() {
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={16}>
           <Card title="Monthly Spending Overview" className="bg-dark-card border-dark-border text-white shadow-xl">
-            <div className="h-[280px]">
+            <div style={{ height: 'clamp(200px, 30vw, 280px)' }}>
               <Bar data={barData} options={chartOptions} />
             </div>
           </Card>
         </Col>
         <Col xs={24} lg={8}>
           <Card title="Category Distribution (Top 8)" className="bg-dark-card border-dark-border text-white shadow-xl">
-            <div className="h-[280px]">
+            <div style={{ height: 'clamp(220px, 35vw, 320px)' }}>
               {catTotals.length > 0 ? <Doughnut data={donutData} options={donutOptions} /> : (
                 <div className="flex items-center justify-center h-full text-gray-500">No data</div>
               )}

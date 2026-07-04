@@ -182,7 +182,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
       open={open}
       onCancel={onClose}
       footer={null}
-      width={540}
+      width="min(540px, 96vw)"
       getContainer={false}
       className="dark-modal"
       style={{

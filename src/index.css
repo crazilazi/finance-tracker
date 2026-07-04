@@ -349,15 +349,37 @@ html, body, #root {
   .dark-table .ant-table-wrapper {
     overflow-x: auto;
   }
+  .ant-table-wrapper {
+    overflow-x: auto;
+  }
 
   /* Ensure cards don't have extra padding on small screens */
   .ant-card-body {
     padding: 12px !important;
   }
 
-  /* Stack filter row in TopBar on mobile */
-  .topbar-filter-row {
-    flex-wrap: wrap;
+  /* Chart containers: prevent overflow */
+  canvas {
+    max-width: 100% !important;
+  }
+
+  /* Ant Design modals: full-width on mobile */
+  .ant-modal {
+    max-width: 96vw !important;
+    margin: 8px auto !important;
+  }
+  .ant-modal-content {
+    border-radius: 12px !important;
+  }
+
+  /* Shrink pagination text on mobile */
+  .ant-pagination-total-text {
+    display: none;
+  }
+
+  /* Anomaly list item: stack on mobile */
+  .anomaly-item {
+    flex-direction: column !important;
   }
 }
 
@@ -368,17 +390,4 @@ html, body, #root {
   }
 }
 
-/* Make the floating selection bar more compact on mobile */
-@media (max-width: 640px) {
-  .fixed.bottom-6 {
-    min-width: calc(100vw - 32px) !important;
-    left: 16px !important;
-    right: 16px !important;
-    transform: none !important;
-  }
-
-  /* KPI grid: 2 columns on mobile */
-  .kpi-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
-}
+/* Make the floating selection bar compact on mobile handled via JS isMobile flag */
