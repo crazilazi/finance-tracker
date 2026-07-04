@@ -333,3 +333,52 @@ html, body, #root {
 [data-theme="dark"] .bg-dark-card     { background-color: #161d30 !important; }
 [data-theme="dark"] .border-dark-border { border-color: #25304b !important; }
 
+/* ─── Mobile Responsive ──────────────────────────────────── */
+
+/* Hide the desktop sidebar on mobile, show hamburger */
+@media (max-width: 767px) {
+  .sidebar-desktop {
+    display: none !important;
+  }
+
+  .topbar-hamburger {
+    display: flex !important;
+  }
+
+  /* Make data table horizontally scrollable on mobile */
+  .dark-table .ant-table-wrapper {
+    overflow-x: auto;
+  }
+
+  /* Ensure cards don't have extra padding on small screens */
+  .ant-card-body {
+    padding: 12px !important;
+  }
+
+  /* Stack filter row in TopBar on mobile */
+  .topbar-filter-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* Hide hamburger on desktop */
+@media (min-width: 768px) {
+  .topbar-hamburger {
+    display: none !important;
+  }
+}
+
+/* Make the floating selection bar more compact on mobile */
+@media (max-width: 640px) {
+  .fixed.bottom-6 {
+    min-width: calc(100vw - 32px) !important;
+    left: 16px !important;
+    right: 16px !important;
+    transform: none !important;
+  }
+
+  /* KPI grid: 2 columns on mobile */
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}

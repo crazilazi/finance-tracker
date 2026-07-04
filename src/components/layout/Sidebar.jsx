@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Menu } from 'antd';
-import {
+import { Menu, Drawer } from 'antd';
+import { CloseOutlined,
   PieChartOutlined,
   LineChartOutlined,
   WarningOutlined,
@@ -14,7 +14,7 @@ import { setCurrentPage } from '../../features/expenses/expensesSlice';
 import { DARK } from '../ThemeProvider';
 
 export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
-  const c = palette || DARK;  // fallback to dark if not passed
+  const c = palette || DARK;
   const currentPage = useSelector(state => state.expenses.currentPage);
   const anomalies   = useSelector(state => state.expenses.analytics.anomalies || []);
   const dispatch    = useDispatch();
@@ -50,37 +50,48 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
     if (setMobileOpen) setMobileOpen(false);
   };
 
-  return (
-    /* ── Plain div as the sidebar container ───────────────────── */
+  const SidebarContent = () => (
     <div style={{
-      width: 240,
-      flexShrink: 0,
-      height: '100vh',
+      width: '100%',
+      height: '100%',
       background: c.BG_CARD,
-      borderRight: `1px solid ${c.BORDER}`,
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      zIndex: 40,
     }}>
       {/* Logo / Brand */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '24px', borderBottom: `1px solid ${c.BORDER}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '20px 24px', borderBottom: `1px solid ${c.BORDER}`,
         userSelect: 'none', flexShrink: 0,
       }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontWeight: 900, fontSize: 18,
-          boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
-        }}>
-          ₹
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontWeight: 900, fontSize: 18,
+            boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+          }}>
+            ₹
+          </div>
+          <span style={{ color: c.TEXT_BASE, fontWeight: 700, fontSize: 17, letterSpacing: '0.05em' }}>
+            Finance Tracker
+          </span>
         </div>
-        <span style={{ color: c.TEXT_BASE, fontWeight: 700, fontSize: 17, letterSpacing: '0.05em' }}>
-          Finance Tracker
-        </span>
+        {/* Close button — only shown inside the mobile Drawer */}
+        {mobileOpen && (
+          <button
+            onClick={() => setMobileOpen(false)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: c.TEXT_MUTED, fontSize: 18, padding: 4,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <CloseOutlined />
+          </button>
+        )}
       </div>
 
       {/* Nav Menu — fills remaining height */}
@@ -95,5 +106,44 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
         />
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {/* ── Desktop: always-visible sidebar ─────────────────────── */}
+      <div
+        className="sidebar-desktop"
+        style={{
+          width: 240,
+          flexShrink: 0,
+          height: '100vh',
+          background: c.BG_CARD,
+          borderRight: `1px solid ${c.BORDER}`,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          zIndex: 40,
+        }}
+      >
+        <SidebarContent />
+      </div>
+
+      {/* ── Mobile: slide-over Drawer ───────────────────────────── */}
+      <Drawer
+        placement="left"
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        width={260}
+        closable={false}
+        className="sidebar-mobile-drawer"
+        styles={{
+          body: { padding: 0, background: c.BG_CARD },
+          header: { display: 'none' },
+          mask: { background: 'rgba(0,0,0,0.6)' },
+        }}
+      >
+        <SidebarContent />
+      </Drawer>
+    </>
   );
 }

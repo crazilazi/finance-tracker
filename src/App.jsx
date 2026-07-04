@@ -133,7 +133,7 @@ export default function App() {
       color: c.TEXT_BASE,
     }}>
 
-      {/* ── Left: fixed-width sidebar ──────────────────────────── */}
+      {/* ── Left: sidebar (hidden on mobile via CSS) ─────────── */}
       <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} palette={c} />
 
       {/* ── Right: column that fills the rest ─────────────────── */}
@@ -155,10 +155,10 @@ export default function App() {
           flex: 1,
           overflowY: 'auto',
           overflowX: 'hidden',
-          padding: '24px',
+          padding: 'clamp(12px, 3vw, 24px)',
           background: c.BG_BASE,
         }}>
-          <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 80 }}>
+          <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 100 }}>
             {renderActiveTab()}
           </div>
         </main>
