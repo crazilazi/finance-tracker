@@ -66,17 +66,29 @@ npm install --legacy-peer-deps
 ### 2. Environment Configuration (`.env`)
 Create a `.env` file in the root project directory:
 ```env
-# Data Source Mode: 'mssql' or 'json'
-DATA_SOURCE=mssql
+# ----------------------------------------
+# 🗄️ Database Configuration
+# ----------------------------------------
+# Set to 'mssql' for Azure SQL/Local SQL, or 'json' for local file fallback
+DATA_SOURCE=
 
-# Microsoft SQL Server connection string
-DATABASE_URL="Server=your-server.database.windows.net;Database=tracker;User Id=user;Password=pass;Encrypt=true;TrustServerCertificate=false;"
+# Your full Microsoft SQL Server connection string
+# Format: "Server=your-server.database.windows.net;Database=tracker;User Id=user;Password=pass;Encrypt=true;TrustServerCertificate=false;"
+DATABASE_URL=
 
-# JWT Secret for securing local and oauth sessions
+# ----------------------------------------
+# 🔐 Security & Authentication
+# ----------------------------------------
+# A long, random string used to securely sign authentication cookies (e.g., 'super-secret-key-12345!')
 JWT_SECRET=
 
-# GitHub OAuth 2.0 (Leave blank to use interactive Mock OAuth 2.0)
+# ----------------------------------------
+# 🐙 GitHub OAuth 2.0 Integration
+# ----------------------------------------
+# Your GitHub OAuth App Client ID (Leave blank to bypass real auth and use interactive Mock Auth locally)
 GITHUB_CLIENT_ID=
+
+# Your GitHub OAuth App Client Secret (Leave blank if Mock Auth is used)
 GITHUB_CLIENT_SECRET=
 ```
 
