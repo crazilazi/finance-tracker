@@ -36,16 +36,20 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 - **Specific Year & Month Controls**: Control bar dropdowns for filtering table records by exact Year and Month.
 - **Chart Click Drill-Downs**: Click any slice on the Category Doughnut chart or any bar on the Monthly Overview chart to instantly filter the Data Table and jump to those specific entries.
 
-### 🗄️ 7. Self-Healing Dual-Storage Backend (SQL Server / JSON)
+### 🗄️ 7. High-Resilience Database Connection Engine
 - **Primary Storage**: Microsoft SQL Server (`mssql`).
-- **Fallback Storage**: Local JSON engine (`public/expense_data.json`).
-- **Self-Healing Resilience**: Automatic seamless fallback to local JSON storage if local SQL Server connections go offline or timeout.
+- **Connection Pooling Optimization**: Maintains a persistent minimum connection (`min: 1`) to eliminate cold start delays, with schema checks strictly running once per server boot rather than per-request.
+- **Exponential Backoff & Self-Healing**: Network interruptions trigger an exponential backoff retry mechanism (1s, 2s, 4s). In `development` mode, it seamlessly falls back to a local JSON engine (`public/expense_data.json`) if SQL goes offline. In `production`, it strictly throws a 500 status to prevent data desynchronization.
 
 ### ⚡ 8. High-Performance Architecture (v16 Upgrade)
 - **Next.js 16 & React 19**: Powered by Turbopack and React 19's concurrent features.
 - **Server-Side Aggregation**: All chart generation, monthly totals, and complex statistics are pre-computed on the backend (`/api/expenses/analytics`), eliminating heavy client-side processing bottlenecks.
 - **Server-Paginated Data**: The Data Table integrates tightly with SQL `OFFSET/FETCH` to ensure minimal payload sizes when handling tens of thousands of rows.
 - **Tailwind CSS v4**: Features the new PostCSS `@tailwindcss/postcss` rendering pipeline for blazing fast styling.
+
+### 📱 9. Progressive Web App (PWA) Ready
+- **Installable via Browser**: Users can "Add to Home Screen" on iOS, Android, and Desktop browsers to run the app in a standalone window, removing browser UI for a native application feel.
+- **Powered by @ducanh2912/next-pwa**: Integrated flawlessly with Next.js 16 Turbopack rendering pipeline.
 
 ---
 
@@ -94,14 +98,18 @@ npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### Production Build & Local Deployment
-To compile production assets and run a local production server:
-```bash
-npm run build
-npm start
-```
+---
+
+## ☁️ Deploying to Azure App Service
+
+The application is specifically optimized for **Azure App Service Linux** using a **Next.js Standalone** build.
+
+1. **Azure Web App Setup**: Create an App Service running Node.js 22 LTS. Set the **Startup Command** to `node server.js` and add `PORT=8080` to your Application Settings.
+2. **GitHub Actions**: The repository includes a ready-to-go `.github/workflows/develop_tracker.yml` CI/CD pipeline.
+3. **Artifact Zipping**: The workflow automatically builds the highly optimized `.next/standalone` directory, zips it locally on the build server to bypass Azure hidden-file strictness, and uses OIDC to deploy directly to your App Service.
 
 ---
 
 ## 📄 License
 This project is open-source and licensed under the [MIT License](LICENSE).
+
