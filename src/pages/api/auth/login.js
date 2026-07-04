@@ -3,7 +3,10 @@ export default function handler(req, res) {
 
   if (clientId) {
     // Real GitHub OAuth
-    const redirectUri = encodeURIComponent(`http://localhost:3000/api/auth/callback`);
+    const protocol = req.headers['x-forwarded-proto'] || (req.headers.host.includes('localhost') ? 'http' : 'https');
+    const host = req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+    const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/callback`);
     const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=read:user user:email`;
     res.redirect(githubAuthUrl);
   } else {
