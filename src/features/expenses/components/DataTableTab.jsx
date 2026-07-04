@@ -33,6 +33,66 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Drag state for the floating bar
+  const [dragPos, setDragPos] = useState(null); // null = use default position
+  const dragRef = React.useRef(null);
+  const isDragging = React.useRef(false);
+  const dragStart = React.useRef({ x: 0, y: 0, left: 0, top: 0 });
+
+  // Reset drag position when bar appears/disappears
+  useEffect(() => {
+    if (selectedRowKeys.length === 0) setDragPos(null);
+  }, [selectedRowKeys.length]);
+
+  const onDragStart = (e) => {
+    const el = dragRef.current;
+    if (!el) return;
+    isDragging.current = true;
+    const rect = el.getBoundingClientRect();
+    const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+    dragStart.current = { x: clientX, y: clientY, left: rect.left, top: rect.top };
+    el.style.cursor = 'grabbing';
+    e.preventDefault();
+  };
+
+  const onDragMove = React.useCallback((e) => {
+    if (!isDragging.current || !dragRef.current) return;
+    const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
+    const dx = clientX - dragStart.current.x;
+    const dy = clientY - dragStart.current.y;
+    const newLeft = dragStart.current.left + dx;
+    const newTop  = dragStart.current.top  + dy;
+    // Clamp within viewport
+    const el = dragRef.current;
+    const maxLeft = window.innerWidth  - el.offsetWidth  - 8;
+    const maxTop  = window.innerHeight - el.offsetHeight - 8;
+    setDragPos({
+      left: Math.max(8, Math.min(newLeft, maxLeft)),
+      top:  Math.max(8, Math.min(newTop,  maxTop)),
+    });
+    e.preventDefault();
+  }, []);
+
+  const onDragEnd = React.useCallback(() => {
+    isDragging.current = false;
+    if (dragRef.current) dragRef.current.style.cursor = 'grab';
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', onDragMove, { passive: false });
+    window.addEventListener('mouseup',   onDragEnd);
+    window.addEventListener('touchmove', onDragMove, { passive: false });
+    window.addEventListener('touchend',  onDragEnd);
+    return () => {
+      window.removeEventListener('mousemove', onDragMove);
+      window.removeEventListener('mouseup',   onDragEnd);
+      window.removeEventListener('touchmove', onDragMove);
+      window.removeEventListener('touchend',  onDragEnd);
+    };
+  }, [onDragMove, onDragEnd]);
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -343,37 +403,64 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
         locale={{ emptyText: <div className="text-gray-500">No records found.</div> }}
       />
 
-      {/* Floating Selection Bar */}
-      {selectedRowKeys.length > 0 && (
-        <div
-          style={{
-            position: 'fixed',
-            zIndex: 50,
-            bottom: isMobile ? 12 : 24,
-            left: isMobile ? 12 : '50%',
-            right: isMobile ? 12 : 'auto',
-            transform: isMobile ? 'none' : 'translateX(-50%)',
-            minWidth: isMobile ? 'auto' : '480px',
-            background: 'rgba(10, 15, 30, 0.97)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(99, 102, 241, 0.25)',
-            borderRadius: 16,
-            boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.1)',
-            padding: isMobile ? '10px 12px' : '12px 16px',
-            animation: 'slideUpFadeFixed 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
-          }}
-        >
-          <style>{`
-            @keyframes slideUpFadeFixed {
-              from { opacity: 0; transform: ${isMobile ? 'translateY(20px)' : 'translateX(-50%) translateY(20px)'}; }
-              to   { opacity: 1; transform: ${isMobile ? 'translateY(0)' : 'translateX(-50%) translateY(0)'}; }
-            }
-          `}</style>
+      {/* Floating Selection Bar — draggable */}
+      {selectedRowKeys.length > 0 && (() => {
+        // Compute position: use dragPos if user has dragged, otherwise default
+        const posStyle = dragPos
+          ? { left: dragPos.left, top: dragPos.top, bottom: 'auto', right: 'auto', transform: 'none' }
+          : {
+              bottom: isMobile ? 72 : 24,   // 72px on mobile to clear the FAB (+) button
+              left: isMobile ? 12 : '50%',
+              right: isMobile ? 12 : 'auto',
+              transform: isMobile ? 'none' : 'translateX(-50%)',
+            };
 
-          {/* Top Row: Summary Pill + Action Buttons */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            {/* Left: selection count + net flow */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        return (
+          <div
+            ref={dragRef}
+            onMouseDown={onDragStart}
+            onTouchStart={onDragStart}
+            style={{
+              position: 'fixed',
+              zIndex: 50,
+              ...posStyle,
+              minWidth: isMobile ? 'auto' : '480px',
+              background: 'rgba(10, 15, 30, 0.97)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              borderRadius: 16,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.1)',
+              cursor: 'grab',
+              userSelect: 'none',
+              animation: dragPos ? 'none' : 'slideUpFadeFixed 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              touchAction: 'none',
+            }}
+          >
+            <style>{`
+              @keyframes slideUpFadeFixed {
+                from { opacity: 0; transform: ${isMobile ? 'translateY(20px)' : 'translateX(-50%) translateY(20px)'}; }
+                to   { opacity: 1; transform: ${isMobile ? 'translateY(0)' : 'translateX(-50%) translateY(0)'}; }
+              }
+            `}</style>
+
+            {/* Drag handle grip */}
+            <div style={{
+              display: 'flex', justifyContent: 'center', alignItems: 'center',
+              padding: '6px 0 2px', cursor: 'grab'
+            }}>
+              <div style={{
+                width: 36, height: 4, borderRadius: 4,
+                background: 'rgba(99, 102, 241, 0.4)'
+              }} />
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: isMobile ? '6px 12px 10px' : '4px 16px 12px' }}>
+
+              {/* Top Row: Summary Pill + Action Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                {/* Left: selection count + net flow */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{
                 background: 'rgba(99,102,241,0.2)', color: '#a5b4fc',
                 fontSize: 10, fontWeight: 800, padding: '3px 8px',
@@ -459,8 +546,10 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
               })}
             </div>
           )}
-        </div>
-      )}
+            </div>{/* end content wrapper */}
+          </div>
+        );
+      })()}
 
     </Card>
   );
