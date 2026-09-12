@@ -8,16 +8,24 @@ import { CloseOutlined,
   PartitionOutlined,
   BulbOutlined,
   TableOutlined,
-  RocketOutlined
+  RocketOutlined,
+  SyncOutlined
 } from '@ant-design/icons';
 import { setCurrentPage } from '../../features/expenses/expensesSlice';
 import { DARK } from '../ThemeProvider';
+import useViewport from '../../hooks/useViewport';
+
+export const SIDEBAR_WIDTH = 240;
+export const SIDEBAR_COLLAPSED_WIDTH = 72;
 
 export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
   const c = palette || DARK;
   const currentPage = useSelector(state => state.expenses.currentPage);
   const anomalies   = useSelector(state => state.expenses.analytics.anomalies || []);
   const dispatch    = useDispatch();
+  // Tablets (768–1023px) get an icon-only rail so content keeps ~170px more width
+  const { isTablet } = useViewport();
+  const collapsed = isTablet;
 
   const menuItems = [
     { key: 'dashboard', icon: <PieChartOutlined />, label: 'Dashboard' },
@@ -42,6 +50,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
     { key: 'breakdown', icon: <PartitionOutlined />, label: 'Breakdown' },
     { key: 'insights',  icon: <BulbOutlined />,     label: 'AI Insights' },
     { key: 'simulator', icon: <RocketOutlined />,   label: 'What-If SIP' },
+    { key: 'reconcile', icon: <SyncOutlined />,     label: 'Reconcile' },
     { key: 'data',      icon: <TableOutlined />,    label: 'Data Table' },
   ];
 
@@ -50,7 +59,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
     if (setMobileOpen) setMobileOpen(false);
   };
 
-  const SidebarContent = () => (
+  const SidebarContent = ({ compact = false }) => (
     <div style={{
       width: '100%',
       height: '100%',
@@ -61,11 +70,11 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
     }}>
       {/* Logo / Brand */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '20px 24px', borderBottom: `1px solid ${c.BORDER}`,
+        display: 'flex', alignItems: 'center', justifyContent: compact ? 'center' : 'space-between',
+        padding: compact ? '16px 0' : '20px 24px', borderBottom: `1px solid ${c.BORDER}`,
         userSelect: 'none', flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }} title={compact ? 'Finance Tracker' : undefined}>
           <div style={{
             width: 40, height: 40, borderRadius: 12, flexShrink: 0,
             background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
@@ -75,9 +84,11 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
           }}>
             ₹
           </div>
-          <span style={{ color: c.TEXT_BASE, fontWeight: 700, fontSize: 17, letterSpacing: '0.05em' }}>
-            Finance Tracker
-          </span>
+          {!compact && (
+            <span style={{ color: c.TEXT_BASE, fontWeight: 700, fontSize: 17, letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+              Finance Tracker
+            </span>
+          )}
         </div>
         {/* Close button — only shown inside the mobile Drawer */}
         {mobileOpen && (
@@ -99,10 +110,11 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
         <Menu
           theme={c === DARK ? 'dark' : 'light'}
           mode="inline"
+          inlineCollapsed={compact}
           selectedKeys={[currentPage]}
           items={menuItems}
           onClick={handleMenuClick}
-          style={{ background: 'transparent', border: 'none', paddingTop: 16 }}
+          style={{ background: 'transparent', border: 'none', paddingTop: 16, width: '100%' }}
         />
       </div>
     </div>
@@ -114,7 +126,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
       <div
         className="sidebar-desktop"
         style={{
-          width: 240,
+          width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
           flexShrink: 0,
           height: '100vh',
           background: c.BG_CARD,
@@ -123,17 +135,19 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
           flexDirection: 'column',
           overflow: 'hidden',
           zIndex: 40,
+          transition: 'width 0.2s ease',
         }}
       >
-        <SidebarContent />
+        <SidebarContent compact={collapsed} />
       </div>
 
-      {/* ── Mobile: slide-over Drawer ───────────────────────────── */}
+      {/* ── Mobile: slide-over Drawer (never wider than the phone) ── */}
       <Drawer
         placement="left"
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
         closable={false}
+        width="min(280px, 85vw)"
         className="sidebar-mobile-drawer"
         styles={{
           body: { padding: 0, background: c.BG_CARD },

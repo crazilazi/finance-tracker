@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Card, Table, Input, Select, Button, Popconfirm, Tag, Spin, App } from 'antd';
-import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, SyncOutlined, ExportOutlined } from '@ant-design/icons';
+import { Card, Table, Input, Select, Button, Popconfirm, Tag, Spin, App, Tooltip } from 'antd';
+import { SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, UndoOutlined, CopyOutlined, ExportOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import {
   setTableFilters,
@@ -9,10 +9,11 @@ import {
   setDataPage,
   setPageSize,
 } from '../expensesSlice';
+import useViewport from '../../../hooks/useViewport';
 
 const { Option } = Select;
 
-export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, onReconcile }) {
+export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) {
   const { message, notification } = App.useApp();
   const dispatch = useDispatch();
   const tableData = useSelector(state => state.expenses.tableData);
@@ -31,7 +32,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
   const globalQuery = useSelector(state => state.expenses.query);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-  const [isMobile, setIsMobile] = useState(false);
+  const { isMobile } = useViewport();
 
   // Drag state for the floating bar
   const [dragPos, setDragPos] = useState(null); // null = use default position
@@ -92,13 +93,6 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
       window.removeEventListener('touchend',  onDragEnd);
     };
   }, [onDragMove, onDragEnd]);
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
 
   const rowSelection = {
     selectedRowKeys,
@@ -213,6 +207,22 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
       key: 'category',
       sorter: true,
       sortOrder: sortCol === 'category' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null
+    },
+    {
+      title: 'Notes',
+      dataIndex: 'tags',
+      key: 'notes',
+      width: 220,
+      ellipsis: { showTitle: false },
+      responsive: ['md'], // notes stay reachable via the edit modal on phones
+      render: (notes) => {
+        if (!notes) return <span className="text-gray-600 text-xs">—</span>;
+        return (
+          <Tooltip title={notes} placement="topLeft">
+            <span className="text-gray-400 text-xs">{notes}</span>
+          </Tooltip>
+        );
+      }
     },
     {
       title: 'Type',
@@ -359,12 +369,6 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
             style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10b981', borderRadius: 8, height: 34 }}>
             {!isMobile && 'Export'}
           </Button>
-          {onReconcile && (
-            <Button type="primary" icon={<SyncOutlined />} onClick={onReconcile}
-              style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: 8, height: 34 }}>
-              {!isMobile && 'Reconcile'}
-            </Button>
-          )}
         </div>
       </div>
 
@@ -375,12 +379,13 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
         rowKey="uuid"
         rowSelection={rowSelection}
         loading={tableLoading}
-        scroll={{ x: 480 }}
+        scroll={{ x: 720 }}
         pagination={{
           current: dataPage,
           pageSize: pageSize,
           total: tableTotalCount,
-          showSizeChanger: true,
+          showSizeChanger: !isMobile,
+          simple: isMobile,
           pageSizeOptions: ['10', '20', '50', '100', '500'],
           showTotal: (total) => `${total} records`,
           className: 'dark-pagination'
@@ -409,7 +414,8 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing, on
         const posStyle = dragPos
           ? { left: dragPos.left, top: dragPos.top, bottom: 'auto', right: 'auto', transform: 'none' }
           : {
-              bottom: isMobile ? 72 : 24,   // 72px on mobile to clear the FAB (+) button
+              // 72px on mobile to clear the FAB (+) button; safe-area inset for iOS home indicator
+              bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 'calc(24px + env(safe-area-inset-bottom))',
               left: isMobile ? 12 : '50%',
               right: isMobile ? 12 : 'auto',
               transform: isMobile ? 'none' : 'translateX(-50%)',

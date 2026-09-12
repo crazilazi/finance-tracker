@@ -1,58 +1,36 @@
 import * as dbProvider from '../../../lib/db/dbProvider';
-
-const dbConfig = {
-  dataSource: process.env.DATA_SOURCE || 'json',
-  connectionString: process.env.DATABASE_URL,
-};
-
-import { getSessionUser } from '../../../lib/auth';
+import { dbConfig } from '../../../lib/db/config';
+import { requireUser, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
+import { validateExpense, validateListParams } from '../../../lib/validation';
 
 export default async function handler(req, res) {
-  const user = getSessionUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const rootDir = process.cwd();
+  const user = requireUser(req, res);
+  if (!user) return;
 
   if (req.method === 'GET') {
     // Paginated fetch with server-side filtering and sorting
-    const {
-      filter = 'all',
-      page = '1',
-      pageSize = '50',
-      sortCol = 'month',
-      sortDir = 'desc',
-      type = 'all',
-      category = 'all',
-      search = '',
-      query = '',
-    } = req.query;
-
-    const isExport = req.query.export === 'true';
+    const { value: params, error } = validateListParams(req.query);
+    if (error) { res.status(400).json({ error }); return; }
 
     try {
-      const result = await dbProvider.getExpensesPaginated(
-        dbConfig,
-        { filter, page: parseInt(page), pageSize: parseInt(pageSize), sortCol, sortDir, type, category, search, query, isExport },
-        rootDir,
-        user.username
-      );
-      return res.status(200).json(result); // { data: [...], total: N }
+      const result = await dbProvider.getExpensesPaginated(dbConfig, params, user.user_id);
+      { res.status(200).json(result); return; } // { data: [...], total: N }
     } catch (err) {
-      return res.status(500).json({ error: err.message });
+      { sendServerError(res, err, 'GET /api/expenses'); return; }
     }
   }
 
   if (req.method === 'POST') {
+    const { value, error } = validateExpense(req.body);
+    if (error) { res.status(400).json({ error }); return; }
+
     try {
-      const result = await dbProvider.createExpense(dbConfig, req.body, rootDir, user.username);
-      return res.status(200).json(result);
+      const result = await dbProvider.createExpense(dbConfig, value, user.user_id);
+      { res.status(200).json(result); return; }
     } catch (err) {
-      return res.status(500).json({ error: err.message });
+      { sendServerError(res, err, 'POST /api/expenses'); return; }
     }
   }
 
-  res.setHeader('Allow', ['GET', 'POST']);
-  res.status(405).end(`Method ${req.method} Not Allowed`);
+  { methodNotAllowed(res, ['GET', 'POST']); return; }
 }

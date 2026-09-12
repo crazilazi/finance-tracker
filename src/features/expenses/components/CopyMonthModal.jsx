@@ -143,7 +143,7 @@ export default function CopyMonthModal({ open, onClose }) {
       title: 'Amount (₹)',
       dataIndex: 'amount',
       key: 'amount',
-      width: 150,
+      width: 130,
       render: (amt, record) => (
         <Input
           type="number"
@@ -151,7 +151,7 @@ export default function CopyMonthModal({ open, onClose }) {
           onChange={e => handleAmountChange(record.id, e.target.value)}
           size="small"
           className="bg-slate-900 text-white border-slate-700"
-          style={{ width: 120 }}
+          style={{ width: '100%' }}
           disabled={!record.checked}
         />
       ),
@@ -188,9 +188,10 @@ export default function CopyMonthModal({ open, onClose }) {
         header: { background: isDark ? '#161d30' : '#ffffff', color: isDark ? '#ffffff' : '#000000' }
       }}
     >
-      <div style={{ padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <div style={{ flex: 1 }}>
+      <div style={{ padding: '0 clamp(12px, 3vw, 24px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Source / target pickers sit side by side and stack on phones */}
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: isDark ? '#9ca3af' : '#4b5563', marginBottom: 6 }}>
               Source Month
             </label>
@@ -213,7 +214,7 @@ export default function CopyMonthModal({ open, onClose }) {
             </Select>
           </div>
 
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: isDark ? '#9ca3af' : '#4b5563', marginBottom: 6 }}>
               Target Month (YYYY-MM)
             </label>
@@ -229,7 +230,7 @@ export default function CopyMonthModal({ open, onClose }) {
 
         {sourceMonth && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#f3f4f6' : '#1f2937' }}>
                 Template Preview ({items.length} items found)
               </span>
@@ -242,7 +243,7 @@ export default function CopyMonthModal({ open, onClose }) {
               dataSource={items}
               columns={columns}
               pagination={false}
-              scroll={{ y: isMaximized ? 480 : 280 }}
+              scroll={{ x: 420, y: isMaximized ? 480 : 280 }}
               size="small"
               className={isDark ? 'dark-table' : ''}
               style={{ border: `1px solid ${isDark ? '#232e4c' : '#e5e7eb'}`, borderRadius: 8, overflow: 'hidden' }}

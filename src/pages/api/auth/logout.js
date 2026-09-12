@@ -1,6 +1,8 @@
+import { serializeCookie, SESSION_COOKIE } from '../../../lib/auth';
+
 export default function handler(req, res) {
   if (req.method === 'POST') {
-    res.setHeader('Set-Cookie', 'auth_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax');
+    res.setHeader('Set-Cookie', serializeCookie(SESSION_COOKIE, '', { maxAge: 0, req }));
     res.status(200).json({ success: true });
   } else {
     res.setHeader('Allow', ['POST']);

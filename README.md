@@ -1,6 +1,6 @@
 # 💎 Finance Tracker
 
-A state-of-the-art, highly intuitive user-scoped financial analytics platform built with **Next.js 16 (Turbopack)**, **React 19**, Redux-Observable, RxJS, **Ant Design v6**, and **Tailwind CSS v4**. Features real-time financial health forecasting, OAuth 2.0 authentication, interactive chart click drill-downs, Bank Statement Excel reconciliation, yearly audit scanning, and a self-healing SQL Server / JSON dual-storage backend.
+A state-of-the-art, highly intuitive user-scoped financial analytics platform built with **Next.js 16 (Turbopack)**, **React 19**, Redux-Observable, RxJS, **Ant Design v6**, and **Tailwind CSS v4**. Features real-time financial health forecasting, OAuth 2.0 authentication, interactive chart click drill-downs, Bank Statement Excel reconciliation, yearly audit scanning, and a relational SQL Server backend with automatic retry.
 
 ---
 
@@ -8,8 +8,9 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 
 ### 🔐 1. User-Based Scoping & OAuth 2.0 Authentication
 - **Multi-Tenant User Data Isolation**: Every transaction, category, and report is automatically scoped to the logged-in user context.
-- **OAuth 2.0 Engine**: Supports real GitHub OAuth 2.0 and an interactive Mock OAuth 2.0 consent page for quick local testing.
-- **Session Security**: Session management powered by HttpOnly authentication cookies.
+- **OAuth 2.0 Engine**: Supports real GitHub OAuth 2.0 (with CSRF `state` verification) and an interactive Mock OAuth 2.0 consent page that is only available in development and only when GitHub is not configured.
+- **Session Security**: Signed JWT sessions in `HttpOnly`, `SameSite=Lax`, `Secure` cookies; every API request is scoped by the `user_id` in the session, never by a client-supplied name.
+- **Input Validation**: All expense payloads and query parameters are validated server-side (month format, amount range, allow-listed types, GUID ids) and SQL errors are never returned to the browser.
 
 ### 📋 2. Copy Month Expense Template
 - **Template Cloner**: Select any historical month as a template, preview all entries, adjust individual amounts inline, select/deselect items, and save directly to a target month.
@@ -36,10 +37,11 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 - **Specific Year & Month Controls**: Control bar dropdowns for filtering table records by exact Year and Month.
 - **Chart Click Drill-Downs**: Click any slice on the Category Doughnut chart or any bar on the Monthly Overview chart to instantly filter the Data Table and jump to those specific entries.
 
-### 🗄️ 7. High-Resilience Database Connection Engine
-- **Primary Storage**: Microsoft SQL Server (`mssql`).
-- **Connection Pooling Optimization**: Maintains a persistent minimum connection (`min: 1`) to eliminate cold start delays, with schema checks strictly running once per server boot rather than per-request.
-- **Exponential Backoff & Self-Healing**: Network interruptions trigger an exponential backoff retry mechanism (1s, 2s, 4s). In `development` mode, it seamlessly falls back to a local JSON engine (`public/expense_data.json`) if SQL goes offline. In `production`, it strictly throws a 500 status to prevent data desynchronization.
+### 🗄️ 7. Relational SQL Server Backend
+- **Schema**: `Users`, `Types`, `Categories` (per user), `Expenses`, and an `Expenses_Audit` table populated by a trigger on every insert, update, and delete. Schema lives in `scripts/migrate.sql` and migrates the legacy flat `Expenses` table automatically.
+- **Connection Pooling Optimization**: Maintains a persistent minimum connection (`min: 1`) to eliminate cold start delays.
+- **Exponential Backoff**: Network interruptions trigger an exponential backoff retry mechanism (1s, 2s, 4s). Writes run inside transactions so category and type lookups roll back together with the expense rows.
+- **Notes**: Every expense can carry a free-text note (bank statement narration is stored here when reconciling), which is searchable from the data table.
 
 ### ⚡ 8. High-Performance Architecture (v16 Upgrade)
 - **Next.js 16 & React 19**: Powered by Turbopack and React 19's concurrent features.
@@ -69,18 +71,19 @@ Create a `.env` file in the root project directory:
 # ----------------------------------------
 # 🗄️ Database Configuration
 # ----------------------------------------
-# Set to 'mssql' for Azure SQL/Local SQL, or 'json' for local file fallback
-DATA_SOURCE=
-
-# Your full Microsoft SQL Server connection string
+# Your full Microsoft SQL Server connection string (required)
 # Format: "Server=your-server.database.windows.net;Database=tracker;User Id=user;Password=pass;Encrypt=true;TrustServerCertificate=false;"
 DATABASE_URL=
 
 # ----------------------------------------
 # 🔐 Security & Authentication
 # ----------------------------------------
-# A long, random string used to securely sign authentication cookies (e.g., 'super-secret-key-12345!')
+# A long, random string used to securely sign authentication cookies (required)
 JWT_SECRET=
+
+# Public origin of the app, used to build the OAuth redirect URI.
+# Recommended in production so the Host header is never trusted, e.g. https://tracker.azurewebsites.net
+APP_BASE_URL=
 
 # ----------------------------------------
 # 🐙 GitHub OAuth 2.0 Integration
@@ -92,11 +95,16 @@ GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 ```
 
-### 3. Database Initialization (Optional)
-To create tables and seed initial sample data into your local SQL Server instance:
+### 3. Database Initialization
+Apply the relational schema in `scripts/migrate.sql` (idempotent; also migrates a legacy flat `Expenses` table if one exists):
 ```bash
 node scripts/migrate-to-sql.js
 ```
+To additionally import sample data from `public/expense_data.json` into the relational tables:
+```bash
+node scripts/migrate-to-sql.js --seed
+```
+You can also run `scripts/migrate.sql` directly from SQL Server Management Studio or Azure Data Studio.
 
 ---
 

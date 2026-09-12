@@ -12,13 +12,15 @@ import {
   PieChartOutlined
 } from '@ant-design/icons';
 import { getMonthlyTotals, getCategoryTotals, mean, stdDev } from '../../../utils/financeEngine';
+import BoldText from '../../../components/ui/BoldText';
 
 export default function InsightsTab() {
   const [rawData, setRawData] = useState(null);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
 
   useEffect(() => {
-    fetch('/api/expenses?pageSize=10000', { credentials: 'same-origin' })
+    // export=true returns the full dataset (pageSize is capped at 500 by the API)
+    fetch('/api/expenses?export=true', { credentials: 'same-origin' })
       .then(r => r.json())
       .then(result => setRawData(result.data || []))
       .catch(() => setRawData([]));
@@ -193,12 +195,9 @@ export default function InsightsTab() {
                 </div>
                 <h4 className="text-sm font-bold text-gray-100 m-0">{ins.title}</h4>
               </div>
-              <p
-                className="text-xs text-gray-300 leading-relaxed font-medium mb-4"
-                dangerouslySetInnerHTML={{
-                  __html: ins.body.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
-                }}
-              />
+              <p className="text-xs text-gray-300 leading-relaxed font-medium mb-4">
+                <BoldText text={ins.body} strongClassName="text-white" />
+              </p>
             </div>
             <div>
               <Tag color={ins.color} className="font-bold border-none text-[10px] uppercase tracking-wider py-0.5 px-2 rounded">
