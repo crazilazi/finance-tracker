@@ -21,6 +21,10 @@ import Sparkline from '../../../components/ui/Sparkline';
 import { pctChange } from '../../../utils/financeEngine';
 import ThisMonthCard from './ThisMonthCard';
 import TopMoversCard from './TopMoversCard';
+import BudgetsCard from './BudgetsCard';
+import UpcomingCard from './UpcomingCard';
+import IncomeNudge from './IncomeNudge';
+import DebtSummaryCard from './DebtSummaryCard';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement, Filler);
 
@@ -207,6 +211,7 @@ export default function DashboardTab() {
     <div className="flex flex-col gap-6">
       {/* This month checklist: usual categories recorded vs missing, one-click fill */}
       <ThisMonthCard />
+      <IncomeNudge />
 
       {/* KPI Row */}
       <Row gutter={[16, 16]}>
@@ -296,6 +301,12 @@ export default function DashboardTab() {
         </Col>
       </Row>
 
+      {/* Budgets and upcoming items */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}><BudgetsCard /></Col>
+        <Col xs={24} lg={12}><UpcomingCard /></Col>
+      </Row>
+
       {/* Charts */}
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={16}>
@@ -360,7 +371,10 @@ export default function DashboardTab() {
       </Card>
         </Col>
         <Col xs={24} lg={8}>
-          <TopMoversCard />
+          <div className="flex flex-col gap-4">
+            <DebtSummaryCard />
+            <TopMoversCard />
+          </div>
         </Col>
       </Row>
     </div>

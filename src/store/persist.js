@@ -13,7 +13,6 @@ export const PERSISTED_KEYS = [
   'sortDir',
   'pageSize',
   'tableFilters',
-  'hideAmounts',
 ];
 
 function currentMonthParts() {

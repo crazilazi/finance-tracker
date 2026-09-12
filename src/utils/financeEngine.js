@@ -174,8 +174,9 @@ export function detectAnomalies(data, usualCategories = null) {
 }
 
 // ── Alert Generator ──
-export function generateAlerts(data, anomalies) {
+export function generateAlerts(data, anomalies, extras = {}) {
   const alerts = [];
+  const budgetStatus = Array.isArray(extras.budgetStatus) ? extras.budgetStatus : [];
   if (!data || data.length === 0) return alerts;
 
   const months = [...new Set(data.map(d => d.month))].sort();
@@ -186,12 +187,24 @@ export function generateAlerts(data, anomalies) {
   const latest = monthlyTotals[latestMonth];
   const prev = monthlyTotals[prevMonth];
 
-  // Alert 1: Monthly budget exceeded
-  if (latest && latest.total > 150000) {
+  // Alert 0: Category budgets (from the category manager) for the current month
+  for (const b of budgetStatus) {
+    if (!b.budget) continue;
+    if (b.pct >= 100) {
+      alerts.push({ type: 'danger', title: `🚨 ${b.category} over budget`, detail: `Spent ₹${Math.round(b.spent).toLocaleString('en-IN')} of the ₹${Math.round(b.budget).toLocaleString('en-IN')} budget (${b.pct}%)`, meta: b.month });
+    } else if (b.pct >= 80) {
+      alerts.push({ type: 'warning', title: `⚠️ ${b.category} at ${b.pct}% of budget`, detail: `₹${Math.round(b.budget - b.spent).toLocaleString('en-IN')} left of ₹${Math.round(b.budget).toLocaleString('en-IN')}`, meta: b.month });
+    }
+  }
+
+  // Alert 1: Monthly total against the sum of category budgets (falls back to a fixed ₹1.5L threshold)
+  const totalBudget = budgetStatus.reduce((s, b) => s + (b.budget || 0), 0);
+  const monthlyCeiling = totalBudget > 0 ? totalBudget : 150000;
+  if (latest && latest.total > monthlyCeiling) {
     alerts.push({
       type: 'danger',
       title: '🚨 Budget Exceeded',
-      detail: `${latestMonth} total spending is ₹${Math.round(latest.total).toLocaleString('en-IN')} — exceeding ₹1.5L threshold`,
+      detail: `${latestMonth} total spending is ₹${Math.round(latest.total).toLocaleString('en-IN')} — above ${totalBudget > 0 ? 'your combined category budgets' : 'the ₹1.5L threshold'} (₹${Math.round(monthlyCeiling).toLocaleString('en-IN')})`,
       meta: latestMonth
     });
   }

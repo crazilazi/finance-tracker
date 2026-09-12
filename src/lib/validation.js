@@ -200,6 +200,10 @@ export function validateCategoryPatch(body) {
     else patch.cadence = body.cadence;
   }
 
+  const cards = validateCardDays(body);
+  if (cards.error) return cards;
+  Object.assign(patch, cards.value);
+
   if (Object.keys(patch).length === 0) return { error: 'No updatable fields supplied' };
   return { value: patch };
 }
@@ -215,4 +219,158 @@ export function validateMerge(body) {
   if (!unique.every(isGuid)) return { error: 'sourceIds must be valid GUIDs' };
   if (unique.includes(String(targetId).toLowerCase())) return { error: 'targetId cannot also be a source' };
   return { value: { sourceIds: unique, targetId: String(targetId).toLowerCase() } };
+}
+// ---- Phase B ------------------------------------------------------------------
+
+const PRIVACY_MODES = ['hidden', 'demo', 'real'];
+
+/** Body of PUT /api/settings: { privacy: {...} } — allow-listed keys only. */
+export function validateSettingsPatch(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Request body must be an object' };
+  const allowedTop = ['privacy'];
+  const unknownTop = Object.keys(body).filter(k => !allowedTop.includes(k));
+  if (unknownTop.length) return { error: `Unknown settings: ${unknownTop.join(', ')}` };
+
+  const out = {};
+  if (body.privacy !== undefined) {
+    const p = body.privacy;
+    if (!p || typeof p !== 'object') return { error: 'privacy must be an object' };
+    const allowed = ['defaultMode', 'maskCategoryNames', 'unlockMinutes', 'demoSeed', 'pin', 'clearPin'];
+    const unknown = Object.keys(p).filter(k => !allowed.includes(k));
+    if (unknown.length) return { error: `Unknown privacy settings: ${unknown.join(', ')}` };
+    const privacy = {};
+    if (p.defaultMode !== undefined) {
+      if (!PRIVACY_MODES.includes(p.defaultMode)) return { error: `defaultMode must be one of ${PRIVACY_MODES.join(', ')}` };
+      privacy.defaultMode = p.defaultMode;
+    }
+    if (p.maskCategoryNames !== undefined) privacy.maskCategoryNames = Boolean(p.maskCategoryNames);
+    if (p.unlockMinutes !== undefined) {
+      const n = parseInt(p.unlockMinutes, 10);
+      if (!Number.isFinite(n) || n < 0 || n > 240) return { error: 'unlockMinutes must be between 0 and 240' };
+      privacy.unlockMinutes = n;
+    }
+    if (p.demoSeed !== undefined) {
+      const n = parseInt(p.demoSeed, 10);
+      if (!Number.isFinite(n) || n < 0) return { error: 'demoSeed must be a non-negative integer' };
+      privacy.demoSeed = n;
+    }
+    if (p.pin !== undefined && p.pin !== null && p.pin !== '') {
+      const pin = String(p.pin);
+      if (!/^\d{4,8}$/.test(pin)) return { error: 'pin must be 4 to 8 digits' };
+      privacy.pin = pin;
+    }
+    if (p.clearPin !== undefined) privacy.clearPin = Boolean(p.clearPin);
+    out.privacy = privacy;
+  }
+  if (Object.keys(out).length === 0) return { error: 'No settings supplied' };
+  return { value: out };
+}
+
+/** Body of POST /api/goals and PUT /api/goals/:id */
+export function validateGoal(body, partial = false) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Request body must be an object' };
+  const out = {};
+  if (body.name !== undefined || !partial) {
+    const name = cleanString(body.name, 100);
+    if (!name) return { error: 'name is required' };
+    out.name = name;
+  }
+  if (body.category_id !== undefined) {
+    if (body.category_id !== null && !isGuid(body.category_id)) return { error: 'category_id must be a GUID or null' };
+    out.category_id = body.category_id;
+  }
+  if (body.target_amount !== undefined || !partial) {
+    const r = optionalAmount(body.target_amount, 'target_amount');
+    if (r.error) return r;
+    if (r.value === null || r.value <= 0) return { error: 'target_amount must be greater than zero' };
+    out.target_amount = r.value;
+  }
+  if (body.target_month !== undefined) {
+    if (body.target_month === null || body.target_month === '') out.target_month = null;
+    else if (!MONTH_RE.test(String(body.target_month))) return { error: 'target_month must be YYYY-MM' };
+    else out.target_month = String(body.target_month);
+  }
+  if (body.expected_annual_rate !== undefined) {
+    if (body.expected_annual_rate === null || body.expected_annual_rate === '') out.expected_annual_rate = null;
+    else {
+      const n = Number(body.expected_annual_rate);
+      if (!Number.isFinite(n) || n < 0 || n > 100) return { error: 'expected_annual_rate must be between 0 and 100' };
+      out.expected_annual_rate = Math.round(n * 100) / 100;
+    }
+  }
+  if (body.starting_amount !== undefined) {
+    const r = optionalAmount(body.starting_amount, 'starting_amount');
+    if (r.error) return r;
+    out.starting_amount = r.value ?? 0;
+  }
+  if (partial && Object.keys(out).length === 0) return { error: 'No updatable fields supplied' };
+  return { value: out };
+}
+
+/** Body of POST /api/loans and PUT /api/loans/:id */
+export function validateLoan(body, partial = false) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Request body must be an object' };
+  const out = {};
+  if (body.name !== undefined || !partial) {
+    const name = cleanString(body.name, 100);
+    if (!name) return { error: 'name is required' };
+    out.name = name;
+  }
+  if (body.category_id !== undefined) {
+    if (body.category_id !== null && !isGuid(body.category_id)) return { error: 'category_id must be a GUID or null' };
+    out.category_id = body.category_id;
+  }
+  if (body.principal !== undefined || !partial) {
+    const r = optionalAmount(body.principal, 'principal');
+    if (r.error) return r;
+    if (r.value === null || r.value <= 0) return { error: 'principal must be greater than zero' };
+    out.principal = r.value;
+  }
+  if (body.annual_rate !== undefined || !partial) {
+    const n = Number(body.annual_rate);
+    if (!Number.isFinite(n) || n < 0 || n > 60) return { error: 'annual_rate must be between 0 and 60' };
+    out.annual_rate = Math.round(n * 1000) / 1000;
+  }
+  if (body.tenure_months !== undefined || !partial) {
+    const n = parseInt(body.tenure_months, 10);
+    if (!Number.isFinite(n) || n < 1 || n > 600) return { error: 'tenure_months must be between 1 and 600' };
+    out.tenure_months = n;
+  }
+  if (body.start_month !== undefined || !partial) {
+    const m = cleanString(body.start_month, 7);
+    if (!MONTH_RE.test(m)) return { error: 'start_month must be YYYY-MM' };
+    out.start_month = m;
+  }
+  if (body.emi_amount !== undefined) {
+    const r = optionalAmount(body.emi_amount, 'emi_amount');
+    if (r.error) return r;
+    out.emi_amount = r.value && r.value > 0 ? r.value : null;
+  }
+  if (partial && Object.keys(out).length === 0) return { error: 'No updatable fields supplied' };
+  return { value: out };
+}
+
+/** Body of POST /api/loans/:id/prepayments */
+export function validatePrepayment(body) {
+  if (!body || typeof body !== 'object') return { error: 'Request body must be an object' };
+  const month = cleanString(body.month, 7);
+  if (!MONTH_RE.test(month)) return { error: 'month must be YYYY-MM' };
+  const r = optionalAmount(body.amount, 'amount');
+  if (r.error) return r;
+  if (r.value === null || r.value <= 0) return { error: 'amount must be greater than zero' };
+  const mode = body.mode === 'emi' ? 'emi' : 'tenure';
+  return { value: { month, amount: r.value, mode } };
+}
+
+/** Card fields on a category (statement / due day of month). */
+export function validateCardDays(body) {
+  const out = {};
+  for (const key of ['card_statement_day', 'card_due_day']) {
+    if (body[key] === undefined) continue;
+    if (body[key] === null || body[key] === '') { out[key] = null; continue; }
+    const n = parseInt(body[key], 10);
+    if (!Number.isFinite(n) || n < 1 || n > 31) return { error: `${key} must be between 1 and 31` };
+    out[key] = n;
+  }
+  return { value: out };
 }

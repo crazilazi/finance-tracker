@@ -20,11 +20,13 @@ export const expensesInitialState = {
     allYears: [],         // full list for dropdowns
     allMonths: [],
     usualCategories: [],  // categories recorded most months (drives "missing" checks)
+    budgetStatus: [],     // [{ category, budget, spent, pct }] for the current month
     openingBalance: 0,
     anomalies: [],
     alerts: [],
     healthScore: 0,
     healthMetrics: { savingsRate: 0, emiBurden: 0, stability: 0, anomalyScore: 0 },
+    unit: 'inr',          // 'index' while amounts are hidden (0–100 relative values)
   },
 
   // "This month" checklist (see /api/expenses/summary)
@@ -36,10 +38,19 @@ export const expensesInitialState = {
   categories: [],
   categoriesLoaded: false,
 
-  // Cache: key = "filter|query|page|pageSize|sortCol|sortDir|type|category|search|year|month"
-  // value = { tableData, tableTotalCount, timestamp }
+  // Phase B data
+  goals: [],
+  loans: [],
+  reminders: null,
+
+  // Privacy: what the server is currently returning, and the user's settings
+  privacy: { mode: 'hidden', unlocked: false, unlockExpiresAt: null },
+  settings: null,
+  unlockPromptOpen: false,
+
+  // Cache: key = "mode|filter|query|page|pageSize|sortCol|sortDir|type|category|search|year|month"
   tableCache: {},
-  // key = "filter|query", value = { analytics, timestamp }
+  // key = "mode|filter|query", value = { analytics, timestamp }
   analyticsCache: {},
 
   // UI state (persisted keys: see src/store/persist.js)
@@ -47,7 +58,7 @@ export const expensesInitialState = {
   currentPage: 'dashboard',
   filter: 'all',
   query: '',
-  hideAmounts: false,
+  hideAmounts: true,       // derived from privacy.mode === 'hidden'; not user-toggled any more
   tableFilters: { search: '', type: 'all', category: 'all', year: 'all', month: 'all' },
   sortCol: 'month',
   sortDir: 'desc',
@@ -89,9 +100,37 @@ const expensesSlice = createSlice({
       state.summary = null;
       state.categories = [];
       state.categoriesLoaded = false;
+      state.goals = [];
+      state.loans = [];
+      state.reminders = null;
+      state.settings = null;
+      state.privacy = { mode: 'hidden', unlocked: false, unlockExpiresAt: null };
+      state.hideAmounts = true;
       state.tableCache = {};
       state.analyticsCache = {};
       state.undoStack = [];
+    },
+
+    // ── Privacy ───────────────────────────────────────────────
+    setPrivacy(state, action) {
+      state.privacy = { ...state.privacy, ...action.payload };
+      state.hideAmounts = state.privacy.mode === 'hidden';
+    },
+    /** Called with the X-Privacy-Mode header of every response: keeps the UI honest about what it shows. */
+    syncMode(state, action) {
+      const mode = action.payload;
+      if (!mode || mode === state.privacy.mode) return;
+      state.privacy.mode = mode;
+      if (mode !== 'real') { state.privacy.unlocked = false; state.privacy.unlockExpiresAt = null; }
+      state.hideAmounts = mode === 'hidden';
+      state.tableCache = {};
+      state.analyticsCache = {};
+    },
+    setSettings(state, action) {
+      state.settings = action.payload;
+    },
+    setUnlockPromptOpen(state, action) {
+      state.unlockPromptOpen = !!action.payload;
     },
 
     // ── Loading ───────────────────────────────────────────────
@@ -115,7 +154,7 @@ const expensesSlice = createSlice({
 
     // ── Analytics (server-aggregated) ────────────────────────
     setAnalytics(state, action) {
-      state.analytics = { ...state.analytics, ...action.payload };
+      state.analytics = { ...state.analytics, unit: 'inr', ...action.payload };
       state.analyticsLoading = false;
     },
 
@@ -131,10 +170,19 @@ const expensesSlice = createSlice({
       state.summaryMonth = action.payload;
     },
 
-    // ── Categories ────────────────────────────────────────────
+    // ── Categories / goals / loans / reminders ────────────────
     setCategories(state, action) {
       state.categories = action.payload;
       state.categoriesLoaded = true;
+    },
+    setGoals(state, action) {
+      state.goals = action.payload;
+    },
+    setLoans(state, action) {
+      state.loans = action.payload;
+    },
+    setReminders(state, action) {
+      state.reminders = action.payload;
     },
 
     // ── Cache management ─────────────────────────────────────
@@ -154,7 +202,6 @@ const expensesSlice = createSlice({
     // ── Undo stack (stores only { action, uuid, snapshot }) ──
     pushUndoEntry(state, action) {
       state.undoStack.push(action.payload);
-      // Cap undo stack at 20
       if (state.undoStack.length > 20) state.undoStack.shift();
     },
     popUndoEntry(state) {
@@ -173,9 +220,6 @@ const expensesSlice = createSlice({
     setTheme(state, action) {
       state.theme = action.payload;
     },
-    toggleHideAmounts(state) {
-      state.hideAmounts = !state.hideAmounts;
-    },
     setCurrentPage(state, action) {
       state.currentPage = action.payload;
     },
@@ -187,7 +231,7 @@ const expensesSlice = createSlice({
     },
     setFilter(state, action) {
       state.filter = action.payload;
-      state.dataPage = 1; // reset to page 1 on filter change
+      state.dataPage = 1;
     },
     setQuery(state, action) {
       state.query = action.payload;
@@ -220,6 +264,10 @@ const expensesSlice = createSlice({
 export const {
   setUser,
   logoutUser,
+  setPrivacy,
+  syncMode,
+  setSettings,
+  setUnlockPromptOpen,
   setLoading,
   setTableLoading,
   setAnalyticsLoading,
@@ -229,6 +277,9 @@ export const {
   setSummaryLoading,
   setSummaryMonth,
   setCategories,
+  setGoals,
+  setLoans,
+  setReminders,
   setTableCacheEntry,
   setAnalyticsCacheEntry,
   invalidateCache,
@@ -237,7 +288,6 @@ export const {
   setLastError,
   setLastNotice,
   setTheme,
-  toggleHideAmounts,
   setCurrentPage,
   setPaletteOpen,
   togglePalette,
@@ -249,14 +299,24 @@ export const {
   setPageSize,
 } = expensesSlice.actions;
 
+// ── Selectors ────────────────────────────────────────────────────────────────
+
+/** What the current privacy mode permits. Mirrors the server's write matrix. */
+export function selectCan(state) {
+  const mode = state.expenses.privacy.mode;
+  return {
+    mode,
+    real: mode === 'real',
+    edit: mode === 'real',            // update / delete / bulk sync / undo
+    create: mode !== 'demo',          // new expense with a typed amount, fill-month
+    config: mode !== 'demo',          // categories, goals, loans
+    settings: mode === 'real',
+    export: mode === 'real',
+  };
+}
+
 // ── Derived request parameters ───────────────────────────────────────────────
 
-/**
- * The Data Table's own Year / Month dropdowns narrow the global time filter:
- *   year + month  → exact month
- *   year only     → that year
- *   month only    → that calendar month across all years (monthNum)
- */
 export function effectiveTableFilter(state) {
   const { filter, tableFilters } = state.expenses;
   const year = tableFilters.year && tableFilters.year !== 'all' ? tableFilters.year : null;
@@ -267,7 +327,6 @@ export function effectiveTableFilter(state) {
   return { filter, monthNum: '' };
 }
 
-/** Query-string parameters for the paginated table and for exports. */
 export function tableRequestParams(state) {
   const { query, sortCol, sortDir, tableFilters } = state.expenses;
   const { type, category, search } = tableFilters;
@@ -277,14 +336,14 @@ export function tableRequestParams(state) {
 
 // ── Cache key helpers ─────────────────────────────────────────────────────────
 export function makeTableCacheKey(state) {
-  const { filter, query, dataPage, pageSize, sortCol, sortDir, tableFilters } = state.expenses;
+  const { filter, query, dataPage, pageSize, sortCol, sortDir, tableFilters, privacy } = state.expenses;
   const { type, category, search, year, month } = tableFilters;
-  return [filter, query, dataPage, pageSize, sortCol, sortDir, type, category, search, year, month].join('|');
+  return [privacy.mode, filter, query, dataPage, pageSize, sortCol, sortDir, type, category, search, year, month].join('|');
 }
 
 export function makeAnalyticsCacheKey(state) {
-  const { filter, query } = state.expenses;
-  return `${filter}|${query}`;
+  const { filter, query, privacy } = state.expenses;
+  return `${privacy.mode}|${filter}|${query}`;
 }
 
 export function isCacheFresh(entry) {

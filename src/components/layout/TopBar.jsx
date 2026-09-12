@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Button, Select, Badge, Drawer, Switch, Input, Tooltip, Avatar, Popover } from 'antd';
-import { MenuOutlined, BellOutlined, SunOutlined, MoonOutlined, EyeOutlined, EyeInvisibleOutlined, LogoutOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { setTheme, setFilter, setQuery, toggleHideAmounts, togglePalette } from '../../features/expenses/expensesSlice';
+import { MenuOutlined, BellOutlined, SunOutlined, MoonOutlined, LogoutOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { setTheme, setFilter, setQuery, togglePalette } from '../../features/expenses/expensesSlice';
+import PrivacyControl from './PrivacyControl';
 import { DARK } from '../ThemeProvider';
 import useViewport from '../../hooks/useViewport';
 import { SMART_QUERY_EXAMPLES } from '../../utils/smartQuery';
@@ -29,7 +30,6 @@ export default function TopBar({ setMobileOpen, palette }) {
   const analytics   = useSelector(state => state.expenses.analytics || {});
   const filter      = useSelector(state => state.expenses.filter);
   const query       = useSelector(state => state.expenses.query || '');
-  const hideAmounts = useSelector(state => state.expenses.hideAmounts);
   const alerts      = analytics.alerts || [];
   const user        = useSelector(state => state.expenses.user);
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -80,6 +80,9 @@ export default function TopBar({ setMobileOpen, palette }) {
     simulator:  ['What-If SIP Simulator', 'Simulate investing your expenses in mutual funds'],
     reconcile:  ['Reconcile', 'Match bank statements to your records'],
     categories: ['Categories', 'Icons, recurring templates, budgets and merges'],
+    loans:      ['Loans', 'Balances, payoff dates and prepayment what-ifs'],
+    goals:      ['Goals', 'Savings targets and projections'],
+    settings:   ['Settings', 'Privacy defaults, demo data and unlock'],
     data:       ['Data Table', 'Browse all expense records'],
   };
   const currentTitle = titles[currentPage] || ['Tracker', 'Smart analytics'];
@@ -221,16 +224,8 @@ export default function TopBar({ setMobileOpen, palette }) {
             </Select.OptGroup>
           </Select>
 
-          {/* Privacy Mode */}
-          <Button
-            type="text"
-            icon={hideAmounts
-              ? <EyeInvisibleOutlined style={{ fontSize: 16, color: c.TEXT_MUTED }} />
-              : <EyeOutlined style={{ fontSize: 16, color: c.TEXT_MUTED }} />}
-            onClick={() => dispatch(toggleHideAmounts())}
-            title={hideAmounts ? 'Show Amounts' : 'Hide Amounts'}
-            style={iconButtonStyle}
-          />
+          {/* Privacy lock: hidden / demo / unlocked */}
+          <PrivacyControl compact={isSmall} muted={c.TEXT_MUTED} />
 
           {/* Theme Toggle */}
           <Switch

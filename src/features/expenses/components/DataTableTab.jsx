@@ -8,6 +8,8 @@ import {
   setDataPage,
   setPageSize,
   tableRequestParams,
+  selectCan,
+  setUnlockPromptOpen,
 } from '../expensesSlice';
 import useViewport from '../../../hooks/useViewport';
 import { exportExpensesToExcel, formatMonthLabel } from '../../../utils/exportExpenses';
@@ -33,6 +35,9 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
   const allCategories = useSelector(state => state.expenses.analytics.allCategories);
   const allYears = useSelector(state => state.expenses.analytics.allYears);
   const exportParams = useSelector(tableRequestParams);
+  const can = useSelector(selectCan);
+  // Editing existing rows needs an unlocked session; otherwise open the unlock dialog
+  const requireUnlock = (fn) => (...args) => { if (!can.edit) { dispatch(setUnlockPromptOpen(true)); return; } fn(...args); };
 
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const { isMobile } = useViewport();
@@ -41,10 +46,10 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
   const [editing, setEditing] = useState(null); // { uuid, field }
   const [draft, setDraft] = useState(null);
 
-  const startEdit = (record, field, value) => {
+  const startEdit = requireUnlock((record, field, value) => {
     setEditing({ uuid: record.uuid, field });
     setDraft(value ?? '');
-  };
+  });
   const cancelEdit = () => { setEditing(null); setDraft(null); };
   const commitEdit = (record, field, rawValue) => {
     const value = rawValue === undefined ? draft : rawValue;
@@ -337,14 +342,14 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
           <Button
             type="text"
             icon={<EditOutlined className="text-gray-400 hover:text-indigo-400" />}
-            onClick={() => onEdit(record)}
+            onClick={requireUnlock(() => onEdit(record))}
             className="hover:bg-gray-800"
             title="Open in editor"
           />
           <Popconfirm
             title="Delete Expense?"
             description="Are you sure you want to delete this record?"
-            onConfirm={() => handleDelete(record)}
+            onConfirm={requireUnlock(() => handleDelete(record))}
             okText="Yes"
             cancelText="No"
             placement="topRight"
@@ -430,7 +435,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {onCopyTemplate && (
-              <Button type="primary" icon={<CopyOutlined />} onClick={onCopyTemplate}
+              <Button type="primary" icon={<CopyOutlined />} onClick={onCopyTemplate} disabled={!can.real} title={can.real ? 'Copy a month' : 'Unlock to copy a month'}
                 style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', border: 'none', borderRadius: 8, height: 34 }}>
                 {!isMobile && 'Copy Month'}
               </Button>
@@ -441,11 +446,11 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
                 {!isMobile && 'Scan Missing'}
               </Button>
             )}
-            <Button type="default" icon={<ExportOutlined />} onClick={handleExport}
+            <Button type="default" icon={<ExportOutlined />} onClick={handleExport} disabled={!can.export} title={can.export ? 'Export to Excel' : 'Unlock to export real data'}
               style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10b981', borderRadius: 8, height: 34 }}>
               {!isMobile && 'Export'}
             </Button>
-            {!isMobile && <span className="text-xs text-gray-500" style={{ marginLeft: 'auto' }}>Tip: click any amount, category, type or note to edit it in place.</span>}
+            {!isMobile && <span className="text-xs text-gray-500" style={{ marginLeft: 'auto' }}>{can.edit ? 'Tip: click any amount, category, type or note to edit it in place.' : can.mode === 'demo' ? 'Demo data is showing. Unlock to make changes.' : 'Amounts are hidden. Unlock to edit existing rows.'}</span>}
           </div>
         </div>
 
@@ -571,7 +576,7 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
                     <Popconfirm
                       title={`Delete ${selectedRowKeys.length} items?`}
                       description="This action cannot be undone."
-                      onConfirm={handleBulkDelete}
+                      onConfirm={requireUnlock(handleBulkDelete)}
                       okText="Delete"
                       cancelText="Cancel"
                       placement="top"

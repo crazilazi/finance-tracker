@@ -5,6 +5,7 @@ import { InboxOutlined, RocketOutlined, DeleteOutlined, SyncOutlined } from '@an
 import { parseStatementFile } from '../../../utils/statementParser';
 import { DARK } from '../../../components/ThemeProvider';
 import useViewport from '../../../hooks/useViewport';
+import { selectCan, setUnlockPromptOpen } from '../expensesSlice';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -18,6 +19,7 @@ export default function StatementReconcilerTab() {
   const isDark = theme === 'dark';
   const c = isDark ? DARK : { BG_BASE: '#f9fafb', BG_CARD: '#ffffff', TEXT_BASE: '#1f2937', TEXT_MUTED: '#6b7280', BORDER: '#e5e7eb' };
   const { isMobile } = useViewport();
+  const can = useSelector(selectCan);
 
   const knownCategories = allCategories;
 
@@ -46,6 +48,7 @@ export default function StatementReconcilerTab() {
   };
 
   const handleSync = () => {
+    if (!can.edit) { dispatch(setUnlockPromptOpen(true)); return; }
     const activeItems = items.filter(item => item.checked);
     if (activeItems.length === 0) {
       message.error('Please select at least one transaction to sync!');
