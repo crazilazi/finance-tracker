@@ -1,24 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Button, Select, Badge, Drawer, Switch, Input, Tooltip, Avatar, Popover } from 'antd';
-import { MenuOutlined, BellOutlined, SunOutlined, MoonOutlined, EyeOutlined, EyeInvisibleOutlined, LogoutOutlined, SearchOutlined } from '@ant-design/icons';
-import { setTheme, setFilter, setQuery, toggleHideAmounts } from '../../features/expenses/expensesSlice';
+import { MenuOutlined, BellOutlined, SunOutlined, MoonOutlined, EyeOutlined, EyeInvisibleOutlined, LogoutOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { setTheme, setFilter, setQuery, toggleHideAmounts, togglePalette } from '../../features/expenses/expensesSlice';
 import { DARK } from '../ThemeProvider';
 import useViewport from '../../hooks/useViewport';
+import { SMART_QUERY_EXAMPLES } from '../../utils/smartQuery';
 
 const { Option } = Select;
 
 const SMART_FILTER_HELP = (
-  <div style={{ fontSize: 11, lineHeight: 1.5 }}>
-    <strong>💡 Smart Filter syntax examples:</strong>
+  <div style={{ fontSize: 11, lineHeight: 1.6, maxWidth: 280 }}>
+    <strong>💡 Smart filter</strong>
     <ul style={{ paddingLeft: 14, margin: '4px 0 0 0' }}>
-      <li><code>rent</code> (matches category)</li>
-      <li><code>&gt;5000</code> or <code>1000-5000</code> (matches amount)</li>
-      <li><code>type:emi</code> or <code>type:saving</code></li>
-      <li><code>sheet:july</code> (matches sheet name)</li>
+      {SMART_QUERY_EXAMPLES.map(ex => (
+        <li key={ex.code}><code>{ex.code}</code> — {ex.text}</li>
+      ))}
     </ul>
   </div>
 );
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default function TopBar({ setMobileOpen, palette }) {
   const dispatch    = useDispatch();
@@ -32,6 +34,7 @@ export default function TopBar({ setMobileOpen, palette }) {
   const user        = useSelector(state => state.expenses.user);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef(null);
 
   // isSmall: phones. isCompact: anything narrower than ~1100px, where the
   // sidebar plus the full control cluster no longer fit side by side.
@@ -40,6 +43,9 @@ export default function TopBar({ setMobileOpen, palette }) {
   const c = palette || DARK;
 
   const uniqueMonths = analytics.allMonths || [];
+  const currentYear = String(new Date().getFullYear());
+  const years = (analytics.allYears && analytics.allYears.length ? analytics.allYears : [currentYear]);
+  const yearOptions = years.includes(currentYear) ? years : [currentYear, ...years];
 
   useEffect(() => {
     if (themeMode === 'dark') {
@@ -55,15 +61,26 @@ export default function TopBar({ setMobileOpen, palette }) {
     }
   }, [themeMode]);
 
+  // "/" hotkey and the command palette ask the top bar to focus the smart filter
+  useEffect(() => {
+    const focus = () => {
+      if (isCompact) setSearchOpen(true);
+      setTimeout(() => searchRef.current?.focus?.(), 50);
+    };
+    window.addEventListener('app:focus-smart-filter', focus);
+    return () => window.removeEventListener('app:focus-smart-filter', focus);
+  }, [isCompact]);
+
   const titles = {
-    dashboard: ['Dashboard', 'Overview of your financial health'],
-    trends:    ['Trends', 'Track spending patterns over time'],
-    anomalies: ['Anomalies', 'Smart detection of unusual spending'],
-    breakdown: ['Breakdown', 'Detailed category analysis'],
-    insights:  ['AI Insights', 'Smart observations about your finances'],
-    simulator: ['What-If SIP Simulator', 'Simulate investing your expenses in mutual funds'],
-    reconcile: ['Reconcile', 'Match bank statements to your records'],
-    data:      ['Data Table', 'Browse all expense records'],
+    dashboard:  ['Dashboard', 'Overview of your financial health'],
+    trends:     ['Trends', 'Track spending patterns over time'],
+    anomalies:  ['Anomalies', 'Smart detection of unusual spending'],
+    breakdown:  ['Breakdown', 'Detailed category analysis'],
+    insights:   ['AI Insights', 'Smart observations about your finances'],
+    simulator:  ['What-If SIP Simulator', 'Simulate investing your expenses in mutual funds'],
+    reconcile:  ['Reconcile', 'Match bank statements to your records'],
+    categories: ['Categories', 'Icons, recurring templates, budgets and merges'],
+    data:       ['Data Table', 'Browse all expense records'],
   };
   const currentTitle = titles[currentPage] || ['Tracker', 'Smart analytics'];
 
@@ -81,12 +98,13 @@ export default function TopBar({ setMobileOpen, palette }) {
 
   const smartQueryInput = (
     <Input
-      placeholder="🔍 Smart filter..."
+      ref={searchRef}
+      placeholder="🔍 Smart filter…  (press / )"
       value={query}
       onChange={(e) => dispatch(setQuery(e.target.value))}
       allowClear
       autoFocus={isCompact}
-      style={{ width: isCompact ? 'min(260px, 80vw)' : 190 }}
+      style={{ width: isCompact ? 'min(260px, 80vw)' : 210 }}
       className="smart-query-input"
     />
   );
@@ -108,7 +126,6 @@ export default function TopBar({ setMobileOpen, palette }) {
 
         {/* ── Left: Hamburger + Page Title ─────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 60, flex: '1 1 auto', overflow: 'hidden' }}>
-          {/* Hamburger — always visible on mobile, hidden on desktop */}
           <Button
             type="text"
             icon={<MenuOutlined />}
@@ -157,7 +174,7 @@ export default function TopBar({ setMobileOpen, palette }) {
                 <Button
                   type="text"
                   icon={<SearchOutlined style={{ fontSize: 16, color: query ? '#6366f1' : c.TEXT_MUTED }} />}
-                  title="Smart filter"
+                  title="Smart filter ( / )"
                   style={iconButtonStyle}
                 />
               </Badge>
@@ -165,6 +182,18 @@ export default function TopBar({ setMobileOpen, palette }) {
           ) : (
             <Tooltip title={SMART_FILTER_HELP} placement="bottomLeft">
               {smartQueryInput}
+            </Tooltip>
+          )}
+
+          {/* Command palette */}
+          {!isSmall && (
+            <Tooltip title="Command palette (Ctrl+K)">
+              <Button
+                type="text"
+                icon={<ThunderboltOutlined style={{ fontSize: 16, color: c.TEXT_MUTED }} />}
+                onClick={() => dispatch(togglePalette())}
+                style={iconButtonStyle}
+              />
             </Tooltip>
           )}
 
@@ -182,17 +211,12 @@ export default function TopBar({ setMobileOpen, palette }) {
               <Option value="last12">Last 12 Months</Option>
             </Select.OptGroup>
             <Select.OptGroup label="Years">
-              <Option value="2026">2026</Option>
-              <Option value="2025">2025</Option>
-              <Option value="2024">2024</Option>
-              <Option value="2023">2023</Option>
+              {yearOptions.map(y => <Option key={y} value={y}>{y}</Option>)}
             </Select.OptGroup>
             <Select.OptGroup label="Months">
               {uniqueMonths.map(m => {
                 const [y, mo] = m.split('-');
-                const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                const label = `${names[parseInt(mo) - 1]} ${y}`;
-                return <Option key={m} value={m}>{label}</Option>;
+                return <Option key={m} value={m}>{`${MONTH_NAMES[parseInt(mo, 10) - 1]} ${y}`}</Option>;
               })}
             </Select.OptGroup>
           </Select>

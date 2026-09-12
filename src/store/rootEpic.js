@@ -2,6 +2,8 @@ import { combineEpics } from 'redux-observable';
 import {
   fetchTableDataEpic,
   fetchAnalyticsEpic,
+  fetchSummaryEpic,
+  fetchCategoriesEpic,
   globalFilterChangeEpic,
   tableConfigChangeEpic,
   queryChangeEpic,
@@ -10,6 +12,11 @@ import {
   deleteExpenseEpic,
   undoEpic,
   bulkSyncEpic,
+  fillMonthEpic,
+  createCategoryEpic,
+  updateCategoryEpic,
+  deleteCategoryEpic,
+  mergeCategoriesEpic,
   checkAuthSessionEpic,
   logoutEpic,
 } from '../features/expenses/expensesEpics';
@@ -17,6 +24,8 @@ import {
 export const rootEpic = combineEpics(
   fetchTableDataEpic,
   fetchAnalyticsEpic,
+  fetchSummaryEpic,
+  fetchCategoriesEpic,
   globalFilterChangeEpic,
   tableConfigChangeEpic,
   queryChangeEpic,
@@ -25,6 +34,11 @@ export const rootEpic = combineEpics(
   deleteExpenseEpic,
   undoEpic,
   bulkSyncEpic,
+  fillMonthEpic,
+  createCategoryEpic,
+  updateCategoryEpic,
+  deleteCategoryEpic,
+  mergeCategoriesEpic,
   checkAuthSessionEpic,
   logoutEpic,
 );

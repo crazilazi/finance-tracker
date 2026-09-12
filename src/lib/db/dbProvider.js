@@ -5,6 +5,8 @@ async function withRetry(operation, retries = 3, delayMs = 1000) {
     try {
       return await operation();
     } catch (error) {
+      // Business-rule errors (409 etc.) are final; only connectivity problems are retried.
+      if (error && error.status) throw error;
       if (attempt === retries) {
         console.error(`SQL Server operation failed after ${retries} attempts:`, error.message);
         throw error;
@@ -27,6 +29,10 @@ export async function getExpensesPaginated(config, params, userId) {
 
 export async function getAnalytics(config, params, userId) {
   return await withRetry(() => mssqlProvider.getAnalytics(config, params, userId));
+}
+
+export async function getMonthSummary(config, month, userId) {
+  return await withRetry(() => mssqlProvider.getMonthSummary(config, month, userId));
 }
 
 export async function createExpense(config, item, userId) {
@@ -59,4 +65,16 @@ export async function getCategories(config, userId, typeName) {
 
 export async function createCategory(config, input, userId) {
   return await withRetry(() => mssqlProvider.createCategory(config, input, userId));
+}
+
+export async function updateCategory(config, id, patch, userId) {
+  return await withRetry(() => mssqlProvider.updateCategory(config, id, patch, userId));
+}
+
+export async function deleteCategory(config, id, userId) {
+  return await withRetry(() => mssqlProvider.deleteCategory(config, id, userId));
+}
+
+export async function mergeCategories(config, sourceIds, targetId, userId) {
+  return await withRetry(() => mssqlProvider.mergeCategories(config, sourceIds, targetId, userId));
 }

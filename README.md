@@ -53,6 +53,15 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 - **Installable via Browser**: Users can "Add to Home Screen" on iOS, Android, and Desktop browsers to run the app in a standalone window, removing browser UI for a native application feel.
 - **Powered by @ducanh2912/next-pwa**: Integrated flawlessly with Next.js 16 Turbopack rendering pipeline.
 
+
+### ⚡ 10. Monthly Routine Accelerators
+- **This Month checklist** on the Dashboard: your usual categories (recurring, or recorded in 4 of the last 6 months) with recorded vs missing, pre-filled suggested amounts, per-row **Add** and one-click **Fill all missing**.
+- **Category manager** (sidebar → Categories): rename, icon, type, recurring flag, default amount, budget, archive, and **merge duplicates** (case/punctuation variants are detected automatically).
+- **Smart filter** in the top bar works server-side across the table, charts and export: `>5000`, `1000-5000`, `2k-1.5l`, `type:emi`, `cat:loan`, `notes:swiggy`, `sheet:july`, plus free text.
+- **Inline editing** in the Data Table: click an amount, category, type or note to change it in place; Undo is one click away.
+- **Command palette** with `Ctrl/⌘+K`; hotkeys `N` (new expense), `/` (smart filter), `G` then `D/T/A/B/I/S/R/C/X` (jump to a tab), `Ctrl+Z` (undo).
+- **Remembered view**: theme, filters, sort, page size and last tab persist across reloads; the Data Table opens on the current month by default.
+- **Top movers** card and real per-category charts in Trends and Breakdown, powered by a month × category matrix in the analytics response.
 ---
 
 ## 🚀 Getting Started

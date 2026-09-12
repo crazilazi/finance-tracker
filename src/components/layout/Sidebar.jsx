@@ -9,7 +9,8 @@ import { CloseOutlined,
   BulbOutlined,
   TableOutlined,
   RocketOutlined,
-  SyncOutlined
+  SyncOutlined,
+  TagsOutlined
 } from '@ant-design/icons';
 import { setCurrentPage } from '../../features/expenses/expensesSlice';
 import { DARK } from '../ThemeProvider';
@@ -51,6 +52,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
     { key: 'insights',  icon: <BulbOutlined />,     label: 'AI Insights' },
     { key: 'simulator', icon: <RocketOutlined />,   label: 'What-If SIP' },
     { key: 'reconcile', icon: <SyncOutlined />,     label: 'Reconcile' },
+    { key: 'categories', icon: <TagsOutlined />,    label: 'Categories' },
     { key: 'data',      icon: <TableOutlined />,    label: 'Data Table' },
   ];
 

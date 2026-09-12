@@ -7,13 +7,7 @@ import { parseNLPInput, guessType } from '../../../utils/nlpParser';
 
 const { Option } = Select;
 
-const ICONS = {
-  'Ghar Kharch': '🏠', 'Pocket Kharch': '👛', 'Room Rent': '🏢',
-  'Bijali Bill': '⚡', 'Internet Bill': '🌐', 'Gas Booking': '🔥',
-  'Home Loan': '🏡', 'Car Loan': '🚗', 'HDFC CC': '💳',
-  'SBI CC': '💳', 'Kotak CC': '💳', 'LIC': '🛡️',
-  'MF Saving': '📈', 'Land Saving': '🏗️', 'Bhima Saving': '💎'
-};
+const TYPE_ICON = { Expense: '💸', EMI: '🏦', Saving: '🐷', Income: '🟢' };
 
 const formatINR = (num) => {
   if (num === undefined || num === null) return '₹0';
@@ -23,6 +17,7 @@ const formatINR = (num) => {
 export default function ExpenseModal({ open, onClose, editRecord }) {
   const dispatch = useDispatch();
   const allCategories = useSelector(state => state.expenses.analytics.allCategories);
+  const categoryObjects = useSelector(state => state.expenses.categories);
   const [form] = Form.useForm();
   const selectedMonth = Form.useWatch('month', form);
   const [isRangeMode, setIsRangeMode] = useState(false);
@@ -116,14 +111,22 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
     form.setFieldsValue({ type });
   };
 
-  // Build Top 6 Templates from known categories (static list)
+  // One-tap templates: recurring categories first (with their default or last amount),
+  // then the most-used categories, up to six tiles.
   const getTemplates = () => {
-    return knownCategories.slice(0, 6).map(cat => ({
-      category: cat,
-      amount: 5000,
-      type: guessType(cat),
-      icon: ICONS[cat] || '💰'
-    }));
+    const active = (categoryObjects || []).filter(c => !c.archived);
+    const recurring = active.filter(c => c.is_recurring).sort((a, b) => a.name.localeCompare(b.name));
+    const popular = active.filter(c => !c.is_recurring).sort((a, b) => (b.usage_count || 0) - (a.usage_count || 0));
+    const picked = [...recurring, ...popular].slice(0, 6);
+    if (picked.length > 0) {
+      return picked.map(c => ({
+        category: c.name,
+        amount: c.default_amount ?? c.last_amount ?? 0,
+        type: c.type,
+        icon: c.icon || TYPE_ICON[c.type] || '💰',
+      }));
+    }
+    return knownCategories.slice(0, 6).map(cat => ({ category: cat, amount: 5000, type: guessType(cat), icon: '💰' }));
   };
 
   const templates = getTemplates();
