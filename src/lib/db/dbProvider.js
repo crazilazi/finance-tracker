@@ -5,7 +5,7 @@ async function withRetry(operation, retries = 3, delayMs = 1000) {
     try {
       return await operation();
     } catch (error) {
-      // Business-rule errors (409 etc.) are final; only connectivity problems are retried.
+      // Business-rule errors (404/409 etc.) are final; only connectivity problems are retried.
       if (error && error.status) throw error;
       if (attempt === retries) {
         console.error(`SQL Server operation failed after ${retries} attempts:`, error.message);
@@ -13,68 +13,44 @@ async function withRetry(operation, retries = 3, delayMs = 1000) {
       }
       console.warn(`SQL Server operation failed (attempt ${attempt}/${retries}). Retrying in ${delayMs}ms...`, error.message);
       await new Promise(res => setTimeout(res, delayMs));
-      // Exponential backoff
       delayMs *= 2;
     }
   }
 }
 
-export async function getExpenses(config, userId) {
-  return await withRetry(() => mssqlProvider.getExpenses(config, userId));
-}
+const wrap = (fn) => (...args) => withRetry(() => fn(...args));
 
-export async function getExpensesPaginated(config, params, userId) {
-  return await withRetry(() => mssqlProvider.getExpensesPaginated(config, params, userId));
-}
+export const getExpenses = wrap(mssqlProvider.getExpenses);
+export const getExpensesPaginated = wrap(mssqlProvider.getExpensesPaginated);
+export const getAnalytics = wrap(mssqlProvider.getAnalytics);
+export const getMonthSummary = wrap(mssqlProvider.getMonthSummary);
+export const createExpense = wrap(mssqlProvider.createExpense);
+export const updateExpense = wrap(mssqlProvider.updateExpense);
+export const deleteExpense = wrap(mssqlProvider.deleteExpense);
+export const bulkSyncExpenses = wrap(mssqlProvider.bulkSyncExpenses);
+export const verifyOrCreateUser = wrap(mssqlProvider.verifyOrCreateUser);
 
-export async function getAnalytics(config, params, userId) {
-  return await withRetry(() => mssqlProvider.getAnalytics(config, params, userId));
-}
+export const getUserSettings = wrap(mssqlProvider.getUserSettings);
+export const saveUserSettings = wrap(mssqlProvider.saveUserSettings);
 
-export async function getMonthSummary(config, month, userId) {
-  return await withRetry(() => mssqlProvider.getMonthSummary(config, month, userId));
-}
+export const getTypes = wrap(mssqlProvider.getTypes);
+export const getCategoryNameList = wrap(mssqlProvider.getCategoryNameList);
+export const getCategories = wrap(mssqlProvider.getCategories);
+export const createCategory = wrap(mssqlProvider.createCategory);
+export const updateCategory = wrap(mssqlProvider.updateCategory);
+export const deleteCategory = wrap(mssqlProvider.deleteCategory);
+export const mergeCategories = wrap(mssqlProvider.mergeCategories);
 
-export async function createExpense(config, item, userId) {
-  return await withRetry(() => mssqlProvider.createExpense(config, item, userId));
-}
+export const getGoals = wrap(mssqlProvider.getGoals);
+export const createGoal = wrap(mssqlProvider.createGoal);
+export const updateGoal = wrap(mssqlProvider.updateGoal);
+export const deleteGoal = wrap(mssqlProvider.deleteGoal);
 
-export async function updateExpense(config, uuid, item, userId) {
-  return await withRetry(() => mssqlProvider.updateExpense(config, uuid, item, userId));
-}
+export const getLoans = wrap(mssqlProvider.getLoans);
+export const createLoan = wrap(mssqlProvider.createLoan);
+export const updateLoan = wrap(mssqlProvider.updateLoan);
+export const deleteLoan = wrap(mssqlProvider.deleteLoan);
+export const addPrepayment = wrap(mssqlProvider.addPrepayment);
+export const deletePrepayment = wrap(mssqlProvider.deletePrepayment);
 
-export async function deleteExpense(config, uuid, userId) {
-  return await withRetry(() => mssqlProvider.deleteExpense(config, uuid, userId));
-}
-
-export async function bulkSyncExpenses(config, items, userId) {
-  return await withRetry(() => mssqlProvider.bulkSyncExpenses(config, items, userId));
-}
-
-export async function verifyOrCreateUser(config, profile) {
-  return await withRetry(() => mssqlProvider.verifyOrCreateUser(config, profile));
-}
-
-export async function getTypes(config) {
-  return await withRetry(() => mssqlProvider.getTypes(config));
-}
-
-export async function getCategories(config, userId, typeName) {
-  return await withRetry(() => mssqlProvider.getCategories(config, userId, typeName));
-}
-
-export async function createCategory(config, input, userId) {
-  return await withRetry(() => mssqlProvider.createCategory(config, input, userId));
-}
-
-export async function updateCategory(config, id, patch, userId) {
-  return await withRetry(() => mssqlProvider.updateCategory(config, id, patch, userId));
-}
-
-export async function deleteCategory(config, id, userId) {
-  return await withRetry(() => mssqlProvider.deleteCategory(config, id, userId));
-}
-
-export async function mergeCategories(config, sourceIds, targetId, userId) {
-  return await withRetry(() => mssqlProvider.mergeCategories(config, sourceIds, targetId, userId));
-}
+export const getReminders = wrap(mssqlProvider.getReminders);

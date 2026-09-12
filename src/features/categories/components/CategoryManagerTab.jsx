@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { Card, Table, Input, InputNumber, Select, Switch, Button, Popover, Popconfirm, Tag, Modal, Tooltip, Alert } from 'antd';
 import { PlusOutlined, MergeCellsOutlined, DeleteOutlined, InboxOutlined, UndoOutlined } from '@ant-design/icons';
 import useViewport from '../../../hooks/useViewport';
+import { selectCan, setUnlockPromptOpen } from '../../expenses/expensesSlice';
 
 const { Option } = Select;
 
@@ -19,6 +20,8 @@ export default function CategoryManagerTab() {
   const loaded = useSelector(s => s.expenses.categoriesLoaded);
   const hideAmounts = useSelector(s => s.expenses.hideAmounts);
   const { isMobile } = useViewport();
+  const can = useSelector(selectCan);
+  const mutate = (action) => (can.config ? dispatch(action) : dispatch(setUnlockPromptOpen(true)));
 
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -32,7 +35,7 @@ export default function CategoryManagerTab() {
 
   const fmt = (n) => n === null || n === undefined ? '—' : hideAmounts ? '₹•••••' : '₹' + Math.round(n).toLocaleString('en-IN');
 
-  const update = (id, patch, silent = false) => dispatch({ type: 'expenses/updateCategory', payload: { id, patch, silent } });
+  const update = (id, patch, silent = false) => mutate({ type: 'expenses/updateCategory', payload: { id, patch, silent } });
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -76,7 +79,7 @@ export default function CategoryManagerTab() {
   const doMerge = () => {
     const sourceIds = selected.filter(id => id !== mergeTarget);
     if (!mergeTarget || sourceIds.length === 0) return;
-    dispatch({ type: 'expenses/mergeCategories', payload: { sourceIds, targetId: mergeTarget } });
+    mutate({ type: 'expenses/mergeCategories', payload: { sourceIds, targetId: mergeTarget } });
     setMergeOpen(false);
     setSelected([]);
   };
@@ -84,7 +87,7 @@ export default function CategoryManagerTab() {
   const createNew = () => {
     const name = newName.trim();
     if (!name) return;
-    dispatch({ type: 'expenses/createCategory', payload: { name, type: newType } });
+    mutate({ type: 'expenses/createCategory', payload: { name, type: newType } });
     setNewName('');
   };
 
@@ -192,7 +195,7 @@ export default function CategoryManagerTab() {
             <Button size="small" type="text" icon={r.archived ? <UndoOutlined /> : <InboxOutlined />} onClick={() => update(r.id, { archived: !r.archived })} />
           </Tooltip>
           {r.usage_count === 0 && (
-            <Popconfirm title="Delete this unused category?" onConfirm={() => dispatch({ type: 'expenses/deleteCategory', payload: { id: r.id } })}>
+            <Popconfirm title="Delete this unused category?" onConfirm={() => mutate({ type: 'expenses/deleteCategory', payload: { id: r.id } })}>
               <Button size="small" type="text" danger icon={<DeleteOutlined />} />
             </Popconfirm>
           )}

@@ -1,18 +1,19 @@
 import * as dbProvider from '../../../lib/db/dbProvider';
 import { dbConfig } from '../../../lib/db/config';
-import { requireUser, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
+import { requireContext, assertWrite, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
 import { normalizeType } from '../../../lib/validation';
+import { finalizeCategories } from '../../../lib/privacyResponse';
 
 /**
- * Categories are per-user reference data. Every query is scoped to the
- * session's user_id so one tenant can never read another tenant's names.
+ * Categories are per-user reference data, shaped by the privacy mode
+ * (amounts hidden or fake, names optionally masked).
  *
- * GET  /api/master/categories[?type=Expense]   full list incl. icon, flags, usage stats, archived
- * POST /api/master/categories { name, type }    create (reuses an existing name case-insensitively)
+ * GET  /api/master/categories[?type=Expense]
+ * POST /api/master/categories { name, type }
  */
 export default async function handler(req, res) {
-  const user = requireUser(req, res);
-  if (!user) return;
+  const ctx = await requireContext(req, res);
+  if (!ctx) return;
 
   if (req.method === 'GET') {
     let typeName;
@@ -21,8 +22,8 @@ export default async function handler(req, res) {
       if (!typeName) { res.status(400).json({ error: 'Invalid type' }); return; }
     }
     try {
-      const rows = await dbProvider.getCategories(dbConfig, user.user_id, typeName);
-      res.status(200).json(rows);
+      const rows = await dbProvider.getCategories(dbConfig, ctx.user.user_id, typeName, ctx.privacy);
+      res.status(200).json(await finalizeCategories(ctx, rows));
     } catch (err) {
       sendServerError(res, err, 'GET /api/master/categories');
     }
@@ -30,6 +31,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    if (!assertWrite(ctx, res, 'config')) return;
     const body = req.body || {};
     const name = String(body.name ?? '').trim().slice(0, 100);
     const type = normalizeType(body.type ?? 'Expense');
@@ -37,7 +39,7 @@ export default async function handler(req, res) {
     if (!type) { res.status(400).json({ error: 'Invalid type' }); return; }
 
     try {
-      const created = await dbProvider.createCategory(dbConfig, { name, type }, user.user_id);
+      const created = await dbProvider.createCategory(dbConfig, { name, type }, ctx.user.user_id);
       res.status(200).json(created);
     } catch (err) {
       sendServerError(res, err, 'POST /api/master/categories');

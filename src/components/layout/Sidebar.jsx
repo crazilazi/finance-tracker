@@ -10,7 +10,10 @@ import { CloseOutlined,
   TableOutlined,
   RocketOutlined,
   SyncOutlined,
-  TagsOutlined
+  TagsOutlined,
+  BankOutlined,
+  FlagOutlined,
+  SettingOutlined
 } from '@ant-design/icons';
 import { setCurrentPage } from '../../features/expenses/expensesSlice';
 import { DARK } from '../ThemeProvider';
@@ -52,8 +55,12 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
     { key: 'insights',  icon: <BulbOutlined />,     label: 'AI Insights' },
     { key: 'simulator', icon: <RocketOutlined />,   label: 'What-If SIP' },
     { key: 'reconcile', icon: <SyncOutlined />,     label: 'Reconcile' },
+    { key: 'loans',     icon: <BankOutlined />,     label: 'Loans' },
+    { key: 'goals',     icon: <FlagOutlined />,     label: 'Goals' },
     { key: 'categories', icon: <TagsOutlined />,    label: 'Categories' },
     { key: 'data',      icon: <TableOutlined />,    label: 'Data Table' },
+    { type: 'divider' },
+    { key: 'settings',  icon: <SettingOutlined />,  label: 'Settings' },
   ];
 
   const handleMenuClick = ({ key }) => {

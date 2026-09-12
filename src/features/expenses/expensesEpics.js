@@ -4,12 +4,19 @@ import { map, mergeMap, withLatestFrom, switchMap, debounceTime, catchError } fr
 import {
   setUser,
   logoutUser,
+  setPrivacy,
+  syncMode,
+  setSettings,
+  setUnlockPromptOpen,
   setLoading,
   setTableData,
   setAnalytics,
   setSummary,
   setSummaryLoading,
   setCategories,
+  setGoals,
+  setLoans,
+  setReminders,
   setTableCacheEntry,
   setAnalyticsCacheEntry,
   invalidateCache,
@@ -21,36 +28,54 @@ import {
   isCacheFresh,
   tableRequestParams,
 } from './expensesSlice';
+import { getUnlockToken, setUnlockToken, clearUnlockToken } from '../../lib/unlockStorage';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** fetch() wrapper: JSON in/out, 401 → logout, non-2xx → Error with server message. */
+/**
+ * fetch() wrapper: JSON in/out, attaches the unlock grant, surfaces the
+ * server's X-Privacy-Mode, 401 → logout, non-2xx → Error with server message.
+ * Resolves to { body, mode }.
+ */
 async function apiFetch(url, options = {}) {
+  const token = getUnlockToken();
   const res = await fetch(url, {
     credentials: 'same-origin',
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'X-Unlock': token } : {}),
+      ...(options.headers || {}),
+    },
   });
   let body = null;
   try { body = await res.json(); } catch { /* empty body */ }
-  if (res.status === 401) { const e = new Error('401'); e.status = 401; throw e; }
-  if (!res.ok) { const e = new Error(body?.error || `Request failed (${res.status})`); e.status = res.status; throw e; }
-  return body;
+  const mode = res.headers.get('X-Privacy-Mode') || null;
+  if (res.status === 401) { const e = new Error(body?.error || '401'); e.status = 401; e.auth = url.startsWith('/api/privacy') ; throw e; }
+  if (!res.ok) { const e = new Error(body?.error || `Request failed (${res.status})`); e.status = res.status; e.mode = mode; throw e; }
+  return { body, mode };
 }
 
 function failure(err) {
-  if (err && err.status === 401) return of(logoutUser());
+  if (err && err.status === 401 && !err.auth) return of(logoutUser());
+  if (err && err.status === 423) {
+    return of(setLastError(err.message), setUnlockPromptOpen(true), ...(err.mode ? [syncMode(err.mode)] : []));
+  }
   console.error(err);
   return of(setLastError(err?.message || 'Something went wrong'));
 }
 
-/** Everything that must refresh after a write. */
+const modeSync = (mode) => (mode ? [syncMode(mode)] : []);
+
+/** Everything that must refresh after a write or a privacy-mode change. */
 const refreshAll = () => [
   invalidateCache(),
   { type: 'expenses/fetchTableData' },
   { type: 'expenses/fetchAnalytics' },
   { type: 'expenses/fetchSummary' },
   { type: 'expenses/fetchCategories' },
+  { type: 'expenses/fetchGoals' },
+  { type: 'expenses/fetchReminders' },
 ];
 
 function buildTableUrl(state) {
@@ -65,7 +90,8 @@ function buildAnalyticsUrl(state) {
   return `/api/expenses/analytics?${params.toString()}`;
 }
 
-// ── Fetch Table Data Epic ────────────────────────────────────────────────────
+// ── Reads ────────────────────────────────────────────────────────────────────
+
 export const fetchTableDataEpic = (action$, state$) =>
   action$.pipe(
     ofType('expenses/fetchTableData'),
@@ -77,19 +103,15 @@ export const fetchTableDataEpic = (action$, state$) =>
         return of(setTableData({ data: cached.data, total: cached.total }));
       }
       return from(apiFetch(buildTableUrl(state))).pipe(
-        mergeMap(result => {
-          const { data, total } = result;
-          return of(
-            setTableData({ data, total }),
-            setTableCacheEntry({ key: cacheKey, data, total })
-          );
+        mergeMap(({ body, mode }) => {
+          const { data, total } = body;
+          return of(...modeSync(mode), setTableData({ data, total }), setTableCacheEntry({ key: cacheKey, data, total }));
         }),
         catchError(failure)
       );
     })
   );
 
-// ── Fetch Analytics Epic ─────────────────────────────────────────────────────
 export const fetchAnalyticsEpic = (action$, state$) =>
   action$.pipe(
     ofType('expenses/fetchAnalytics'),
@@ -101,16 +123,12 @@ export const fetchAnalyticsEpic = (action$, state$) =>
         return of(setAnalytics(cached.analytics));
       }
       return from(apiFetch(buildAnalyticsUrl(state))).pipe(
-        mergeMap(analytics => of(
-          setAnalytics(analytics),
-          setAnalyticsCacheEntry({ key: cacheKey, analytics })
-        )),
+        mergeMap(({ body, mode }) => of(...modeSync(mode), setAnalytics(body), setAnalyticsCacheEntry({ key: cacheKey, analytics: body }))),
         catchError(failure)
       );
     })
   );
 
-// ── Month summary ("This month" card) ───────────────────────────────────────
 export const fetchSummaryEpic = (action$, state$) =>
   action$.pipe(
     ofType('expenses/fetchSummary', 'expenses/setSummaryMonth'),
@@ -120,20 +138,52 @@ export const fetchSummaryEpic = (action$, state$) =>
       return concat(
         of(setSummaryLoading(true)),
         from(apiFetch(`/api/expenses/summary?month=${encodeURIComponent(month)}`)).pipe(
-          map(summary => setSummary(summary)),
+          mergeMap(({ body, mode }) => of(...modeSync(mode), setSummary(body))),
           catchError(err => concat(of(setSummaryLoading(false)), failure(err)))
         )
       );
     })
   );
 
-// ── Categories (full objects with icons, flags and usage) ───────────────────
 export const fetchCategoriesEpic = (action$) =>
   action$.pipe(
     ofType('expenses/fetchCategories'),
     switchMap(() =>
       from(apiFetch('/api/master/categories')).pipe(
-        map(rows => setCategories(rows)),
+        mergeMap(({ body, mode }) => of(...modeSync(mode), setCategories(body))),
+        catchError(failure)
+      )
+    )
+  );
+
+export const fetchGoalsEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/fetchGoals'),
+    switchMap(() =>
+      from(apiFetch('/api/goals')).pipe(
+        mergeMap(({ body, mode }) => of(...modeSync(mode), setGoals(body))),
+        catchError(failure)
+      )
+    )
+  );
+
+export const fetchLoansEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/fetchLoans'),
+    switchMap(() =>
+      from(apiFetch('/api/loans')).pipe(
+        mergeMap(({ body, mode }) => of(...modeSync(mode), setLoans(body))),
+        catchError(failure)
+      )
+    )
+  );
+
+export const fetchRemindersEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/fetchReminders'),
+    switchMap(() =>
+      from(apiFetch('/api/reminders')).pipe(
+        mergeMap(({ body, mode }) => of(...modeSync(mode), setReminders(body))),
         catchError(failure)
       )
     )
@@ -143,36 +193,23 @@ export const fetchCategoriesEpic = (action$) =>
 export const globalFilterChangeEpic = (action$) =>
   action$.pipe(
     ofType('expenses/setFilter'),
-    mergeMap(() => of(
-      { type: 'expenses/fetchTableData' },
-      { type: 'expenses/fetchAnalytics' }
-    ))
+    mergeMap(() => of({ type: 'expenses/fetchTableData' }, { type: 'expenses/fetchAnalytics' }))
   );
 
-// When table-specific state changes (sort/page/size/table-filters), re-fetch only table data
 export const tableConfigChangeEpic = (action$) =>
   action$.pipe(
-    ofType(
-      'expenses/setSort',
-      'expenses/setDataPage',
-      'expenses/setPageSize',
-      'expenses/setTableFilters',
-    ),
+    ofType('expenses/setSort', 'expenses/setDataPage', 'expenses/setPageSize', 'expenses/setTableFilters'),
     mergeMap(() => of({ type: 'expenses/fetchTableData' }))
   );
 
-// Query has a debounce to avoid firing on every keystroke
 export const queryChangeEpic = (action$) =>
   action$.pipe(
     ofType('expenses/setQuery'),
     debounceTime(350),
-    mergeMap(() => of(
-      { type: 'expenses/fetchAnalytics' },
-      { type: 'expenses/fetchTableData' }
-    ))
+    mergeMap(() => of({ type: 'expenses/fetchAnalytics' }, { type: 'expenses/fetchTableData' }))
   );
 
-// ── Expense Mutation Epics ───────────────────────────────────────────────────
+// ── Expense mutations ────────────────────────────────────────────────────────
 
 export const createExpenseEpic = (action$) =>
   action$.pipe(
@@ -180,8 +217,8 @@ export const createExpenseEpic = (action$) =>
     mergeMap(action => {
       const item = action.payload;
       return from(apiFetch('/api/expenses', { method: 'POST', body: JSON.stringify(item) })).pipe(
-        mergeMap(result => {
-          const uuid = result?.data?.uuid || item.uuid;
+        mergeMap(({ body }) => {
+          const uuid = body?.data?.uuid || item.uuid;
           return of(pushUndoEntry({ action: 'create', uuid, snapshot: item }), ...refreshAll());
         }),
         catchError(failure)
@@ -213,7 +250,6 @@ export const deleteExpenseEpic = (action$) =>
     })
   );
 
-// ── Undo Epic ────────────────────────────────────────────────────────────────
 export const undoEpic = (action$, state$) =>
   action$.pipe(
     ofType('expenses/undoLast'),
@@ -224,15 +260,10 @@ export const undoEpic = (action$, state$) =>
       const last = undoStack[undoStack.length - 1];
 
       let request;
-      if (last.action === 'create') {
-        request = apiFetch(`/api/expenses/${last.uuid}`, { method: 'DELETE' });
-      } else if (last.action === 'delete') {
-        request = apiFetch('/api/expenses', { method: 'POST', body: JSON.stringify(last.snapshot) });
-      } else if (last.action === 'update') {
-        request = apiFetch(`/api/expenses/${last.uuid}`, { method: 'PUT', body: JSON.stringify(last.snapshot) });
-      } else {
-        return EMPTY;
-      }
+      if (last.action === 'create') request = apiFetch(`/api/expenses/${last.uuid}`, { method: 'DELETE' });
+      else if (last.action === 'delete') request = apiFetch('/api/expenses', { method: 'POST', body: JSON.stringify(last.snapshot) });
+      else if (last.action === 'update') request = apiFetch(`/api/expenses/${last.uuid}`, { method: 'PUT', body: JSON.stringify(last.snapshot) });
+      else return EMPTY;
 
       return from(request).pipe(
         mergeMap(() => of({ type: 'expenses/popUndoEntry' }, setLastNotice('Undone'), ...refreshAll())),
@@ -241,22 +272,17 @@ export const undoEpic = (action$, state$) =>
     })
   );
 
-// ── Bulk Sync Epic (reconciler) ─────────────────────────────────────────────
 export const bulkSyncEpic = (action$) =>
   action$.pipe(
     ofType('expenses/bulkSync'),
     mergeMap(action =>
       from(apiFetch('/api/expenses/bulk', { method: 'POST', body: JSON.stringify(action.payload) })).pipe(
-        mergeMap(result => of(
-          setLastNotice(`Synced ${(result?.updated || 0) + (result?.merged || 0)} rows`),
-          ...refreshAll()
-        )),
+        mergeMap(({ body }) => of(setLastNotice(`Synced ${(body?.updated || 0) + (body?.merged || 0)} rows`), ...refreshAll())),
         catchError(failure)
       )
     )
   );
 
-// ── Fill month (This-month card) ────────────────────────────────────────────
 export const fillMonthEpic = (action$) =>
   action$.pipe(
     ofType('expenses/fillMonth'),
@@ -280,6 +306,7 @@ const categoryRefresh = (notice) => [
   { type: 'expenses/fetchAnalytics' },
   { type: 'expenses/fetchTableData' },
   { type: 'expenses/fetchSummary' },
+  { type: 'expenses/fetchReminders' },
 ];
 
 export const createCategoryEpic = (action$) =>
@@ -287,7 +314,7 @@ export const createCategoryEpic = (action$) =>
     ofType('expenses/createCategory'),
     mergeMap(action =>
       from(apiFetch('/api/master/categories', { method: 'POST', body: JSON.stringify(action.payload) })).pipe(
-        mergeMap(created => of(...categoryRefresh(`Category "${created?.name || action.payload.name}" ready`))),
+        mergeMap(({ body }) => of(...categoryRefresh(`Category "${body?.name || action.payload.name}" ready`))),
         catchError(failure)
       )
     )
@@ -299,7 +326,7 @@ export const updateCategoryEpic = (action$) =>
     mergeMap(action => {
       const { id, patch, silent } = action.payload;
       return from(apiFetch(`/api/master/categories/${id}`, { method: 'PUT', body: JSON.stringify(patch) })).pipe(
-        mergeMap(updated => of(...categoryRefresh(silent ? null : `Saved ${updated?.name || 'category'}`))),
+        mergeMap(({ body }) => of(...categoryRefresh(silent ? null : `Saved ${body?.name || 'category'}`))),
         catchError(failure)
       );
     })
@@ -321,35 +348,176 @@ export const mergeCategoriesEpic = (action$) =>
     ofType('expenses/mergeCategories'),
     mergeMap(action =>
       from(apiFetch('/api/master/categories/merge', { method: 'POST', body: JSON.stringify(action.payload) })).pipe(
-        mergeMap(result => of(...categoryRefresh(
-          `Merged ${result?.removed?.length || 0} categories into "${result?.target?.name || 'target'}" (${result?.moved || 0} rows moved)`
+        mergeMap(({ body }) => of(...categoryRefresh(
+          `Merged ${body?.removed?.length || 0} categories into "${body?.target?.name || 'target'}" (${body?.moved || 0} rows moved)`
         ))),
         catchError(failure)
       )
     )
   );
 
-// ── Auth Epics ───────────────────────────────────────────────────────────────
+// ── Goals & loans ────────────────────────────────────────────────────────────
+
+const simpleMutation = (type, build, after) => (action$) =>
+  action$.pipe(
+    ofType(type),
+    mergeMap(action => {
+      const { url, options, notice } = build(action.payload);
+      return from(apiFetch(url, options)).pipe(
+        mergeMap(() => of(setLastNotice(notice), ...after)),
+        catchError(failure)
+      );
+    })
+  );
+
+const goalsAfter = [{ type: 'expenses/fetchGoals' }, { type: 'expenses/fetchReminders' }];
+const loansAfter = [{ type: 'expenses/fetchLoans' }];
+
+export const createGoalEpic = simpleMutation('expenses/createGoal', p => ({ url: '/api/goals', options: { method: 'POST', body: JSON.stringify(p) }, notice: `Goal "${p.name}" created` }), goalsAfter);
+export const updateGoalEpic = simpleMutation('expenses/updateGoal', p => ({ url: `/api/goals/${p.id}`, options: { method: 'PUT', body: JSON.stringify(p.patch) }, notice: 'Goal updated' }), goalsAfter);
+export const deleteGoalEpic = simpleMutation('expenses/deleteGoal', p => ({ url: `/api/goals/${p.id}`, options: { method: 'DELETE' }, notice: 'Goal deleted' }), goalsAfter);
+
+export const createLoanEpic = simpleMutation('expenses/createLoan', p => ({ url: '/api/loans', options: { method: 'POST', body: JSON.stringify(p) }, notice: `Loan "${p.name}" added` }), loansAfter);
+export const updateLoanEpic = simpleMutation('expenses/updateLoan', p => ({ url: `/api/loans/${p.id}`, options: { method: 'PUT', body: JSON.stringify(p.patch) }, notice: 'Loan updated' }), loansAfter);
+export const deleteLoanEpic = simpleMutation('expenses/deleteLoan', p => ({ url: `/api/loans/${p.id}`, options: { method: 'DELETE' }, notice: 'Loan removed' }), loansAfter);
+export const addPrepaymentEpic = simpleMutation('expenses/addPrepayment', p => ({ url: `/api/loans/${p.loanId}/prepayments`, options: { method: 'POST', body: JSON.stringify(p.prepayment) }, notice: 'Prepayment recorded' }), loansAfter);
+export const deletePrepaymentEpic = simpleMutation('expenses/deletePrepayment', p => ({ url: `/api/loans/${p.loanId}/prepayments/${p.id}`, options: { method: 'DELETE' }, notice: 'Prepayment removed' }), loansAfter);
+
+// ── Settings & privacy ───────────────────────────────────────────────────────
+
+export const fetchSettingsEpic = (action$, state$) =>
+  action$.pipe(
+    ofType('expenses/fetchSettings'),
+    withLatestFrom(state$),
+    switchMap(([, state]) =>
+      from(apiFetch('/api/settings')).pipe(
+        mergeMap(({ body }) => {
+          const before = state.expenses.privacy.mode;
+          const actions = [setSettings(body.settings), setPrivacy(body.privacy)];
+          // Settings changed elsewhere (another tab or device): reload everything in the new mode
+          if (body.privacy?.mode && body.privacy.mode !== before) {
+            if (body.privacy.mode !== 'real') clearUnlockToken();
+            actions.push(...refreshAll(), { type: 'expenses/fetchLoans' });
+          }
+          return of(...actions);
+        }),
+        catchError(failure)
+      )
+    )
+  );
+
+/** Re-sync settings whenever the unlock dialog opens, so PIN / window changes made elsewhere are honoured. */
+export const unlockPromptSyncEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/setUnlockPromptOpen'),
+    mergeMap(action => (action.payload ? of({ type: 'expenses/fetchSettings' }) : EMPTY))
+  );
+
+export const saveSettingsEpic = (action$, state$) =>
+  action$.pipe(
+    ofType('expenses/saveSettings'),
+    withLatestFrom(state$),
+    mergeMap(([action, state]) => {
+      const previousMode = state.expenses.settings?.privacy?.defaultMode || 'hidden';
+      return from(apiFetch('/api/settings', { method: 'PUT', body: JSON.stringify(action.payload) })).pipe(
+        mergeMap(({ body }) => {
+          const nextMode = body.settings?.privacy?.defaultMode || 'hidden';
+          const changedMode = nextMode !== previousMode;
+          return of(
+            setSettings(body.settings),
+            // A new default only shows once the tab is locked; do that now so the change is visible immediately
+            ...(changedMode
+              ? [setLastNotice(`Settings saved — this tab is now locked, showing ${nextMode === 'demo' ? 'demo data' : nextMode === 'hidden' ? 'hidden amounts' : 'real data'}`), { type: 'expenses/lock', payload: { silent: true } }]
+              : [setLastNotice('Settings saved')])
+          );
+        }),
+        catchError(failure)
+      );
+    })
+  );
+
+/** Unlock: obtain a grant, store it for this tab only, then reload everything as real data. */
+export const unlockEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/unlock'),
+    mergeMap(action =>
+      from(apiFetch('/api/privacy/unlock', { method: 'POST', body: JSON.stringify({ pin: action.payload?.pin || undefined }) })).pipe(
+        mergeMap(({ body }) => {
+          setUnlockToken(body.token, body.expiresAt);
+          return of(
+            setUnlockPromptOpen(false),
+            setPrivacy({ mode: 'real', unlocked: true, unlockExpiresAt: body.expiresAt }),
+            setLastNotice('Unlocked for this tab'),
+            ...refreshAll(),
+            { type: 'expenses/fetchLoans' },
+          );
+        }),
+        catchError(err => of(setLastError(err.message)))
+      )
+    )
+  );
+
+export const extendUnlockEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/extendUnlock'),
+    switchMap(() =>
+      from(apiFetch('/api/privacy/extend', { method: 'POST' })).pipe(
+        mergeMap(({ body }) => {
+          setUnlockToken(body.token, body.expiresAt);
+          return of(setPrivacy({ mode: 'real', unlocked: true, unlockExpiresAt: body.expiresAt }));
+        }),
+        catchError(() => of({ type: 'expenses/lock', payload: { silent: true } }))
+      )
+    )
+  );
+
+/** Lock: revoke the grant server-side (best effort), drop it locally, reload as the default mode. */
+export const lockEpic = (action$, state$) =>
+  action$.pipe(
+    ofType('expenses/lock'),
+    withLatestFrom(state$),
+    mergeMap(([action, state]) => {
+      const hadToken = !!getUnlockToken();
+      const request = hadToken ? apiFetch('/api/privacy/lock', { method: 'POST' }).catch(() => null) : Promise.resolve(null);
+      clearUnlockToken();
+      const defaultMode = state.expenses.settings?.privacy?.defaultMode || 'hidden';
+      return from(request).pipe(
+        mergeMap(() => of(
+          setPrivacy({ mode: defaultMode, unlocked: false, unlockExpiresAt: null }),
+          ...(action.payload?.silent ? [] : [setLastNotice('Locked')]),
+          ...refreshAll(),
+          { type: 'expenses/fetchLoans' },
+        ))
+      );
+    })
+  );
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
 export const checkAuthSessionEpic = (action$) =>
   action$.pipe(
     ofType('expenses/checkAuthSession'),
     mergeMap(() =>
-      from(fetch('/api/auth/me', { credentials: 'same-origin' }).then(res => res.json())).pipe(
-        mergeMap(data => {
+      from(apiFetch('/api/auth/me')).pipe(
+        mergeMap(({ body: data }) => {
           if (data.authenticated) {
+            // A stale grant from a previous session is dropped if the server did not honour it
+            if (!data.privacy?.unlocked) clearUnlockToken();
             return of(
               setUser({ authenticated: true, username: data.username, email: data.email }),
+              setSettings(data.settings || null),
+              setPrivacy(data.privacy || { mode: 'hidden', unlocked: false, unlockExpiresAt: null }),
               setLoading(false),
               { type: 'expenses/fetchAnalytics' },
               { type: 'expenses/fetchTableData' },
               { type: 'expenses/fetchSummary' },
-              { type: 'expenses/fetchCategories' }
+              { type: 'expenses/fetchCategories' },
+              { type: 'expenses/fetchGoals' },
+              { type: 'expenses/fetchLoans' },
+              { type: 'expenses/fetchReminders' }
             );
           }
-          return of(
-            setUser({ authenticated: false, username: null, email: null }),
-            setLoading(false)
-          );
+          return of(setUser({ authenticated: false, username: null, email: null }), setLoading(false));
         }),
         catchError(() => of(setUser({ authenticated: false, username: null, email: null }), setLoading(false)))
       )
@@ -359,10 +527,11 @@ export const checkAuthSessionEpic = (action$) =>
 export const logoutEpic = (action$) =>
   action$.pipe(
     ofType('expenses/logout'),
-    mergeMap(() =>
-      from(fetch('/api/auth/logout', { method: 'POST' }).then(res => res.json())).pipe(
+    mergeMap(() => {
+      clearUnlockToken();
+      return from(fetch('/api/auth/logout', { method: 'POST' }).then(res => res.json())).pipe(
         map(() => logoutUser()),
         catchError(() => of(logoutUser()))
-      )
-    )
+      );
+    })
   );

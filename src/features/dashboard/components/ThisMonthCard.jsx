@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Card, Button, InputNumber, Progress, Tag, Collapse, Spin, Tooltip } from 'antd';
 import { LeftOutlined, RightOutlined, CheckCircleFilled, PlusOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
-import { setSummaryMonth, setCurrentPage } from '../../expenses/expensesSlice';
+import { setSummaryMonth, setCurrentPage, selectCan, setUnlockPromptOpen } from '../../expenses/expensesSlice';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -35,6 +35,7 @@ export default function ThisMonthCard({ compact = false }) {
   const month = useSelector(s => s.expenses.summaryMonth);
   const hideAmounts = useSelector(s => s.expenses.hideAmounts);
   const [drafts, setDrafts] = useState({});
+  const can = useSelector(selectCan);
 
   const fmt = (n) => hideAmounts ? '₹•••••' : '₹' + Math.round(n || 0).toLocaleString('en-IN');
 
@@ -52,12 +53,14 @@ export default function ThisMonthCard({ compact = false }) {
   const fillable = missing.filter(i => Number(drafts[i.categoryId]) > 0);
 
   const addOne = (item) => {
+    if (!can.create) { dispatch(setUnlockPromptOpen(true)); return; }
     const amount = Number(drafts[item.categoryId]);
     if (!(amount >= 0)) return;
     dispatch({ type: 'expenses/fillMonth', payload: { month, items: [{ category: item.category, amount, type: item.type }] } });
   };
 
   const fillAll = () => {
+    if (!can.create) { dispatch(setUnlockPromptOpen(true)); return; }
     if (fillable.length === 0) return;
     dispatch({
       type: 'expenses/fillMonth',

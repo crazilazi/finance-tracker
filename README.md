@@ -62,6 +62,15 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 - **Command palette** with `Ctrl/⌘+K`; hotkeys `N` (new expense), `/` (smart filter), `G` then `D/T/A/B/I/S/R/C/X` (jump to a tab), `Ctrl+Z` (undo).
 - **Remembered view**: theme, filters, sort, page size and last tab persist across reloads; the Data Table opens on the current month by default.
 - **Top movers** card and real per-category charts in Trends and Breakdown, powered by a month × category matrix in the analytics response.
+
+### 🔒 11. Privacy by Default, Demo Data, Loans, Goals & Reminders
+- **Locked by default, enforced in the API.** Each user's saved setting decides what every response contains: `hidden` (amounts removed, charts keep only their shape), `demo` (plausible fake numbers, consistent across the whole app, seeded per user), or `real`. Nothing the browser sends can widen it.
+- **Unlock per tab.** The lock icon requests a short-lived, server-signed grant (optionally PIN-protected) that lives in the tab's session storage; other tabs stay locked and the tab re-locks after the configured idle window.
+- **Safe writes.** While hidden you can still add entries you type yourself; editing existing rows needs an unlock. In demo mode every change is refused with `423 Locked`.
+- **Settings tab**: default mode, mask category names, unlock window, PIN, demo-seed reshuffle.
+- **Loans**: principal, rate, tenure and start month give outstanding balance, payoff date, interest paid, an amortisation chart, recorded prepayments, a what-if prepayment slider and a "which loan to prepay first" ranking.
+- **Goals**: link a savings target to a category; progress, six-month average contribution, projected completion and the monthly amount needed to hit a target month.
+- **Budgets & Upcoming** on the dashboard: spent vs budget per category with 80%/100% alerts, yearly items detected from your history, credit-card due dates, and an income nudge when no salary has been recorded.
 ---
 
 ## 🚀 Getting Started
@@ -87,7 +96,7 @@ DATABASE_URL=
 # ----------------------------------------
 # 🔐 Security & Authentication
 # ----------------------------------------
-# A long, random string used to securely sign authentication cookies (required)
+# A long, random string used to sign authentication cookies AND per-tab unlock grants (required)
 JWT_SECRET=
 
 # Public origin of the app, used to build the OAuth redirect URI.

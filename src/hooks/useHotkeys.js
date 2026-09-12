@@ -15,7 +15,7 @@ function isTypingTarget(target) {
  *   N            new expense
  *   /            focus smart filter
  *   Ctrl/⌘ + Z   undo last change (outside inputs)
- *   G then D/T/A/B/I/S/R/C/X   jump to a tab
+ *   G then D/T/A/B/I/S/R/C/X/L/O/E   jump to a tab
  *   ?            show the shortcut list (opens palette)
  */
 export default function useHotkeys({ onPalette, onNew, onSearch, onUndo, onGoto, enabled = true }) {
@@ -49,7 +49,7 @@ export default function useHotkeys({ onPalette, onNew, onSearch, onUndo, onGoto,
       const now = Date.now();
       if (pendingG.current && now - pendingG.current < 1000) {
         pendingG.current = 0;
-        const map = { d: 'dashboard', t: 'trends', a: 'anomalies', b: 'breakdown', i: 'insights', s: 'simulator', r: 'reconcile', c: 'categories', x: 'data' };
+        const map = { d: 'dashboard', t: 'trends', a: 'anomalies', b: 'breakdown', i: 'insights', s: 'simulator', r: 'reconcile', c: 'categories', x: 'data', l: 'loans', o: 'goals', e: 'settings' };
         const page = map[e.key.toLowerCase()];
         if (page) { e.preventDefault(); h.onGoto?.(page); }
         return;

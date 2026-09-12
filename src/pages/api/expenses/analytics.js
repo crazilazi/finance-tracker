@@ -1,32 +1,33 @@
 import * as dbProvider from '../../../lib/db/dbProvider';
 import { dbConfig } from '../../../lib/db/config';
 import { detectAnomalies, generateAlerts, calculateHealthScore } from '../../../utils/financeEngine';
-import { requireUser, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
+import { requireContext, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
 import { validateAnalyticsParams } from '../../../lib/validation';
+import { finalizeAnalytics } from '../../../lib/privacyResponse';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') { methodNotAllowed(res, ['GET']); return; }
 
-  const user = requireUser(req, res);
-  if (!user) return;
+  const ctx = await requireContext(req, res);
+  if (!ctx) return;
 
   const { value: params, error } = validateAnalyticsParams(req.query);
   if (error) { res.status(400).json({ error }); return; }
 
   try {
-    const analyticsData = await dbProvider.getAnalytics(dbConfig, params, user.user_id);
+    const analyticsData = await dbProvider.getAnalytics(dbConfig, params, ctx.user.user_id, ctx.privacy);
 
-    // Run anomaly detection and health score on the filtered raw data.
-    // "Missing entry" checks use the user's own usual categories, not a fixed list.
+    // Anomalies, alerts and health are computed on the same (real or demo) rows the
+    // charts are built from; hidden mode is applied afterwards by finalizeAnalytics.
     const {
       rawForAnomalies, monthlyTotals, months, categoryTotals, categoryMatrix,
-      allCategories, allYears, allMonths, openingBalance, usualCategories,
+      allCategories, allYears, allMonths, openingBalance, usualCategories, budgetStatus,
     } = analyticsData;
     const anomalies = detectAnomalies(rawForAnomalies, usualCategories);
-    const alerts = generateAlerts(rawForAnomalies, anomalies);
+    const alerts = generateAlerts(rawForAnomalies, anomalies, { budgetStatus });
     const health = calculateHealthScore(rawForAnomalies, anomalies);
 
-    res.status(200).json({
+    const payload = {
       monthlyTotals,
       months,
       categoryTotals,
@@ -36,6 +37,7 @@ export default async function handler(req, res) {
       allMonths,
       openingBalance,
       usualCategories,
+      budgetStatus,
       anomalies,
       alerts,
       healthScore: health.score,
@@ -45,7 +47,9 @@ export default async function handler(req, res) {
         stability: health.stability,
         anomalyScore: health.anomalyScore,
       },
-    });
+    };
+
+    res.status(200).json(await finalizeAnalytics(ctx, payload));
   } catch (err) {
     sendServerError(res, err, 'GET /api/expenses/analytics');
   }

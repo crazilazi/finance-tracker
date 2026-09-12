@@ -14,7 +14,7 @@ const formatINR = (num) => {
   return '₹' + Math.round(num).toLocaleString('en-IN');
 };
 
-export default function ExpenseModal({ open, onClose, editRecord }) {
+export default function ExpenseModal({ open, onClose, editRecord, preset = null }) {
   const dispatch = useDispatch();
   const allCategories = useSelector(state => state.expenses.analytics.allCategories);
   const categoryObjects = useSelector(state => state.expenses.categories);
@@ -50,7 +50,9 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
         form.setFieldsValue({
           month: dayjs(),
           monthRange: null,
-          type: 'Expense',
+          type: preset?.type || 'Expense',
+          category: preset?.category || undefined,
+          amount: preset?.amount || undefined,
           tags: '',
           propagateYearly: false
         });
@@ -58,7 +60,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
       setNlpText('');
       setNlpParsed(null);
     }
-  }, [open, editRecord, isEdit, form]);
+  }, [open, editRecord, isEdit, form, preset]);
 
   // NLP Parser trigger
   useEffect(() => {
