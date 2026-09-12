@@ -6,6 +6,9 @@ import { normalizeType } from '../../../lib/validation';
 /**
  * Categories are per-user reference data. Every query is scoped to the
  * session's user_id so one tenant can never read another tenant's names.
+ *
+ * GET  /api/master/categories[?type=Expense]   full list incl. icon, flags, usage stats, archived
+ * POST /api/master/categories { name, type }    create (reuses an existing name case-insensitively)
  */
 export default async function handler(req, res) {
   const user = requireUser(req, res);
@@ -19,10 +22,11 @@ export default async function handler(req, res) {
     }
     try {
       const rows = await dbProvider.getCategories(dbConfig, user.user_id, typeName);
-      { res.status(200).json(rows); return; }
+      res.status(200).json(rows);
     } catch (err) {
-      { sendServerError(res, err, 'GET /api/master/categories'); return; }
+      sendServerError(res, err, 'GET /api/master/categories');
     }
+    return;
   }
 
   if (req.method === 'POST') {
@@ -34,11 +38,12 @@ export default async function handler(req, res) {
 
     try {
       const created = await dbProvider.createCategory(dbConfig, { name, type }, user.user_id);
-      { res.status(200).json(created); return; }
+      res.status(200).json(created);
     } catch (err) {
-      { sendServerError(res, err, 'POST /api/master/categories'); return; }
+      sendServerError(res, err, 'POST /api/master/categories');
     }
+    return;
   }
 
-  { methodNotAllowed(res, ['GET', 'POST']); return; }
+  methodNotAllowed(res, ['GET', 'POST']);
 }

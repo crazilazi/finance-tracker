@@ -19,6 +19,8 @@ import {
 import HealthGauge from '../../../components/ui/HealthGauge';
 import Sparkline from '../../../components/ui/Sparkline';
 import { pctChange } from '../../../utils/financeEngine';
+import ThisMonthCard from './ThisMonthCard';
+import TopMoversCard from './TopMoversCard';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement, Filler);
 
@@ -203,6 +205,9 @@ export default function DashboardTab() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* This month checklist: usual categories recorded vs missing, one-click fill */}
+      <ThisMonthCard />
+
       {/* KPI Row */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
@@ -311,8 +316,10 @@ export default function DashboardTab() {
         </Col>
       </Row>
 
-      {/* Health Score Gauge */}
-      <Card title="💓 Financial Health Index" className="bg-dark-card border-dark-border text-white shadow-xl">
+      {/* Health Score Gauge + Top movers */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={16}>
+      <Card title="💓 Financial Health Index" className="bg-dark-card border-dark-border text-white shadow-xl h-full">
         <Row gutter={[24, 24]} align="middle">
           <Col xs={24} md={8} className="flex justify-center">
             <HealthGauge score={healthScore} />
@@ -351,6 +358,11 @@ export default function DashboardTab() {
           </Col>
         </Row>
       </Card>
+        </Col>
+        <Col xs={24} lg={8}>
+          <TopMoversCard />
+        </Col>
+      </Row>
     </div>
   );
 }

@@ -1,9 +1,13 @@
 /**
- * Applies scripts/migrate.sql (relational schema + legacy data migration) and
- * optionally seeds the relational tables from expense_data.json.
+ * Applies the database schema and optionally seeds data.
  *
  *   node scripts/migrate-to-sql.js          # schema only (idempotent)
- *   node scripts/migrate-to-sql.js --seed   # schema + import JSON seed data
+ *   node scripts/migrate-to-sql.js --seed   # schema + import expense_data.json
+ *
+ * Order of work:
+ *   1. scripts/migrate.sql            base relational schema + legacy data migration
+ *   2. scripts/migrations/*.sql       numbered feature migrations, each applied once
+ *                                     (recorded in the SchemaMigrations table)
  *
  * Connection comes from DATABASE_URL in .env (or DB_SERVER / DB_DATABASE /
  * DB_USER / DB_PASSWORD). No default credentials are assumed.
@@ -49,16 +53,49 @@ function normalizeType(value) {
   return TYPES.find(t => t.toLowerCase() === needle) || 'Expense';
 }
 
-async function runSchema(pool) {
-  const sqlPath = path.resolve(__dirname, 'migrate.sql');
-  const script = fs.readFileSync(sqlPath, 'utf8');
-  // The file uses GO separators, which the driver does not understand.
-  const batches = script.split(/^\s*GO\s*$/im).map(b => b.trim()).filter(Boolean);
-  console.log(`Applying ${batches.length} schema batches from scripts/migrate.sql ...`);
+function splitBatches(script) {
+  // The files use GO separators, which the driver does not understand.
+  return script.split(/^\s*GO\s*$/im).map(b => b.trim()).filter(Boolean);
+}
+
+async function runBatches(pool, script) {
+  const batches = splitBatches(script);
   for (const batch of batches) {
     await pool.request().batch(batch);
   }
-  console.log('Schema is up to date.');
+  return batches.length;
+}
+
+async function runBaseSchema(pool) {
+  const sqlPath = path.resolve(__dirname, 'migrate.sql');
+  const count = await runBatches(pool, fs.readFileSync(sqlPath, 'utf8'));
+  console.log(`Base schema: applied ${count} batches from scripts/migrate.sql`);
+}
+
+async function runFeatureMigrations(pool) {
+  await pool.request().batch(`
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SchemaMigrations' AND xtype='U')
+      CREATE TABLE SchemaMigrations (
+        name NVARCHAR(200) NOT NULL PRIMARY KEY,
+        applied_at DATETIME NOT NULL DEFAULT GETDATE()
+      );
+  `);
+
+  const dir = path.resolve(__dirname, 'migrations');
+  if (!fs.existsSync(dir)) { console.log('No scripts/migrations directory; skipping feature migrations.'); return; }
+
+  const files = fs.readdirSync(dir).filter(f => f.toLowerCase().endsWith('.sql')).sort();
+  const applied = new Set((await pool.request().query('SELECT name FROM SchemaMigrations')).recordset.map(r => r.name));
+
+  for (const file of files) {
+    if (applied.has(file)) { console.log(`  ${file}: already applied`); continue; }
+    const count = await runBatches(pool, fs.readFileSync(path.join(dir, file), 'utf8'));
+    const rec = pool.request();
+    rec.input('name', mssql.NVarChar(200), file);
+    await rec.query('INSERT INTO SchemaMigrations (name) VALUES (@name)');
+    console.log(`  ${file}: applied (${count} batches)`);
+  }
+  console.log('Feature migrations are up to date.');
 }
 
 async function seedFromJson(pool) {
@@ -167,7 +204,8 @@ async function run() {
     const config = buildConfig();
     console.log('Connecting to SQL Server ...');
     const pool = await mssql.connect(config);
-    await runSchema(pool);
+    await runBaseSchema(pool);
+    await runFeatureMigrations(pool);
     if (SEED) {
       await seedFromJson(pool);
     } else {

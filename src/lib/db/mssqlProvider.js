@@ -1,6 +1,7 @@
 import mssql from 'mssql';
 import crypto from 'crypto';
 import { normalizeType } from '../validation';
+import { parseSmartQuery, isEmptySmartQuery } from '../../utils/smartQuery';
 
 let poolPromise = null;
 
@@ -57,38 +58,104 @@ function getPool(config) {
   return poolPromise;
 }
 
+/** Error carrying an HTTP status so routes can answer 404/409 instead of 500. */
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+// ---- Month helpers ----------------------------------------------------------
+
+function shiftMonth(month, delta) {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function currentMonthStr() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// ---- WHERE clause builder ---------------------------------------------------
+
 /**
- * Build the WHERE clause conditions and inputs for a filter.
- * filter: 'all' | 'last3' | 'last6' | 'last12' | 'YYYY' | 'YYYY-MM'
+ * Binds inputs on `req` and returns the WHERE clause (without the keyword)
+ * for the standard expense query shape: FROM Expenses e JOIN Categories c JOIN Types t.
+ *
+ * opts: { filter, userId, type, category, search, query, monthNum }
+ *   filter:   'all' | 'last3' | 'last6' | 'last12' | 'YYYY' | 'YYYY-MM'
+ *   query:    smart-query text (see src/utils/smartQuery.js)
+ *   monthNum: '01'..'12' to restrict to a calendar month across years
  */
-function buildFilterConditions(req, filter, userId) {
+function buildWhere(req, opts) {
+  const { filter = 'all', userId, type, category, search, query, monthNum } = opts;
   const conditions = ['e.user_id = @userId'];
   req.input('userId', mssql.UniqueIdentifier, userId);
 
   if (filter && filter !== 'all') {
     if (filter.startsWith('last')) {
-      const n = parseInt(filter.replace('last', ''));
-      const today = new Date();
-      let year = today.getFullYear();
-      let month = (today.getMonth() + 1) - (n - 1);
-      while (month <= 0) { month += 12; year -= 1; }
-      const cutoffStr = `${year}-${String(month).padStart(2, '0')}`;
-      const currentStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-      req.input('monthCutoff', mssql.VarChar(7), cutoffStr);
-      req.input('monthCurrent', mssql.VarChar(7), currentStr);
+      const n = parseInt(filter.replace('last', ''), 10);
+      const current = currentMonthStr();
+      req.input('monthCutoff', mssql.VarChar(7), shiftMonth(current, -(n - 1)));
+      req.input('monthCurrent', mssql.VarChar(7), current);
       conditions.push('e.month >= @monthCutoff AND e.month <= @monthCurrent');
     } else if (filter.length === 4) {
-      // Year filter e.g. '2025'
       req.input('yearFilter', mssql.VarChar(4), filter);
       conditions.push('e.month LIKE @yearFilter + N\'-%\'');
     } else {
-      // Exact month filter e.g. '2025-06'
       req.input('monthFilter', mssql.VarChar(7), filter);
       conditions.push('e.month = @monthFilter');
     }
   }
-  return conditions;
+
+  if (monthNum) {
+    req.input('monthNum', mssql.VarChar(2), monthNum);
+    conditions.push('RIGHT(e.month, 2) = @monthNum');
+  }
+
+  if (type && type !== 'all') {
+    req.input('typeFilter', mssql.VarChar(20), type);
+    conditions.push('t.name = @typeFilter');
+  }
+  if (category && category !== 'all') {
+    req.input('categoryFilter', mssql.NVarChar(100), category);
+    conditions.push('c.name = @categoryFilter');
+  }
+  if (search) {
+    req.input('searchFilter', mssql.NVarChar(100), `%${search}%`);
+    conditions.push('(c.name LIKE @searchFilter OR e.month LIKE @searchFilter OR e.notes LIKE @searchFilter)');
+  }
+
+  const sq = parseSmartQuery(query);
+  if (!isEmptySmartQuery(sq)) {
+    if (sq.amountEq !== null) { req.input('sqEq', mssql.Decimal(18, 2), sq.amountEq); conditions.push('e.amount = @sqEq'); }
+    if (sq.amountMin !== null) { req.input('sqMin', mssql.Decimal(18, 2), sq.amountMin); conditions.push('e.amount >= @sqMin'); }
+    if (sq.amountMax !== null) { req.input('sqMax', mssql.Decimal(18, 2), sq.amountMax); conditions.push('e.amount <= @sqMax'); }
+    if (sq.type) {
+      const t = normalizeType(sq.type);
+      if (t) { req.input('sqType', mssql.VarChar(20), t); conditions.push('t.name = @sqType'); }
+      else conditions.push('1 = 0');
+    }
+    if (sq.category) { req.input('sqCat', mssql.NVarChar(120), `%${sq.category}%`); conditions.push('c.name LIKE @sqCat'); }
+    if (sq.notes) { req.input('sqNotes', mssql.NVarChar(220), `%${sq.notes}%`); conditions.push('e.notes LIKE @sqNotes'); }
+    if (sq.sheet) { req.input('sqSheet', mssql.NVarChar(120), `%${sq.sheet}%`); conditions.push('e.sheet LIKE @sqSheet'); }
+    if (sq.text) {
+      req.input('sqText', mssql.NVarChar(220), `%${sq.text}%`);
+      conditions.push('(c.name LIKE @sqText OR t.name LIKE @sqText OR e.notes LIKE @sqText OR e.sheet LIKE @sqText)');
+    }
+  }
+
+  return conditions.join(' AND ');
 }
+
+const EXPENSE_FROM = `
+    FROM Expenses e
+    JOIN Categories c ON e.category_id = c.id
+    JOIN Types t ON e.type_id = t.id`;
+
+// ---- Reads ------------------------------------------------------------------
 
 export async function getExpenses(config, userId) {
   const pool = await getPool(config);
@@ -124,6 +191,7 @@ export async function getExpensesPaginated(config, params, userId) {
     category = 'all',
     search = '',
     query = '',
+    monthNum = null,
     isExport = false,
   } = params;
 
@@ -134,148 +202,53 @@ export async function getExpensesPaginated(config, params, userId) {
   const allowedCols = ['month', 'category', 'amount', 'type'];
   const safeCol = allowedCols.includes(sortCol) ? (sortCol === 'category' ? 'c.name' : sortCol === 'type' ? 't.name' : `e.${sortCol}`) : 'e.month';
   const safeDir = sortDir === 'asc' ? 'ASC' : 'DESC';
+  const whereOpts = { filter, userId, type, category, search, query, monthNum };
 
   const req = pool.request();
   req.input('offset', mssql.Int, offset);
   req.input('pageSize', mssql.Int, safePageSize);
+  const whereClause = buildWhere(req, whereOpts);
 
-  const conditions = buildFilterConditions(req, filter, userId);
-
-  if (type && type !== 'all') {
-    req.input('typeFilter', mssql.VarChar(20), type);
-    conditions.push('t.name = @typeFilter');
-  }
-  if (category && category !== 'all') {
-    req.input('categoryFilter', mssql.NVarChar(100), category);
-    conditions.push('c.name = @categoryFilter');
-  }
-  if (search) {
-    req.input('searchFilter', mssql.NVarChar(100), `%${search}%`);
-    conditions.push('(c.name LIKE @searchFilter OR e.month LIKE @searchFilter OR e.notes LIKE @searchFilter)');
-  }
-  if (query && query.trim()) {
-    req.input('queryFilter', mssql.NVarChar(200), `%${query.trim()}%`);
-    conditions.push('(c.name LIKE @queryFilter OR t.name LIKE @queryFilter OR e.notes LIKE @queryFilter)');
-  }
-
-  const whereClause = conditions.join(' AND ');
-
-  const querySql = `
+  const dataResult = await req.query(`
     SELECT e.id as uuid, e.month, c.name as category, e.amount, t.name as type, e.notes as tags, e.sheet
-    FROM Expenses e
-    JOIN Categories c ON e.category_id = c.id
-    JOIN Types t ON e.type_id = t.id
+    ${EXPENSE_FROM}
     WHERE ${whereClause}
-    ORDER BY ${safeCol} ${safeDir}
+    ORDER BY ${safeCol} ${safeDir}, e.id
     ${(isExport === 'true' || isExport === true) ? '' : 'OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY'}
-  `;
-
-  const dataResult = await req.query(querySql);
-
-  const countReq = pool.request();
-  buildFilterConditions(countReq, filter, userId);
-  if (type && type !== 'all') countReq.input('typeFilter', mssql.VarChar(20), type);
-  if (category && category !== 'all') countReq.input('categoryFilter', mssql.NVarChar(100), category);
-  if (search) countReq.input('searchFilter', mssql.NVarChar(100), `%${search}%`);
-  if (query && query.trim()) countReq.input('queryFilter', mssql.NVarChar(200), `%${query.trim()}%`);
-
-  const countResult = await countReq.query(`
-    SELECT COUNT(*) AS total
-    FROM Expenses e
-    JOIN Categories c ON e.category_id = c.id
-    JOIN Types t ON e.type_id = t.id
-    WHERE ${whereClause}
   `);
 
-  const total = countResult.recordset[0]?.total || 0;
+  const countReq = pool.request();
+  const countWhere = buildWhere(countReq, whereOpts);
+  const countResult = await countReq.query(`SELECT COUNT(*) AS total ${EXPENSE_FROM} WHERE ${countWhere}`);
 
-  return { data: dataResult.recordset, total };
+  return { data: dataResult.recordset, total: countResult.recordset[0]?.total || 0 };
 }
 
 export async function getAnalytics(config, params, userId) {
   const pool = await getPool(config);
   const { filter = 'all', query = '' } = params;
+  const whereOpts = { filter, userId, query };
 
-  const req = pool.request();
-  const conditions = buildFilterConditions(req, filter, userId);
+  const scoped = (sql) => {
+    const r = pool.request();
+    const where = buildWhere(r, whereOpts);
+    return r.query(sql.replace('{{WHERE}}', where));
+  };
+  const byUser = (sql) => {
+    const r = pool.request();
+    r.input('userId', mssql.UniqueIdentifier, userId);
+    return r.query(sql);
+  };
 
-  if (query && query.trim()) {
-    req.input('queryFilter', mssql.NVarChar(200), `%${query.trim()}%`);
-    conditions.push('(c.name LIKE @queryFilter OR t.name LIKE @queryFilter)');
-  }
-
-  const whereClause = conditions.join(' AND ');
-
-  // Monthly totals by type
-  const monthlyReq = pool.request();
-  buildFilterConditions(monthlyReq, filter, userId);
-  if (query && query.trim()) monthlyReq.input('queryFilter', mssql.NVarChar(200), `%${query.trim()}%`);
-
-  const monthlyResult = await monthlyReq.query(`
-    SELECT e.month, t.name as type, SUM(e.amount) AS total
-    FROM Expenses e
-    JOIN Types t ON e.type_id = t.id
-    JOIN Categories c ON e.category_id = c.id
-    WHERE ${whereClause}
-    GROUP BY e.month, t.name
-    ORDER BY e.month ASC
-  `);
-
-  // Category totals
-  const catReq = pool.request();
-  buildFilterConditions(catReq, filter, userId);
-  if (query && query.trim()) catReq.input('queryFilter', mssql.NVarChar(200), `%${query.trim()}%`);
-
-  const catResult = await catReq.query(`
-    SELECT c.name as category, t.name as type, SUM(e.amount) AS total
-    FROM Expenses e
-    JOIN Types t ON e.type_id = t.id
-    JOIN Categories c ON e.category_id = c.id
-    WHERE ${whereClause}
-    GROUP BY c.name, t.name
-    ORDER BY total DESC
-  `);
-
-  // All categories list
-  const allCatReq = pool.request();
-  allCatReq.input('userId', mssql.UniqueIdentifier, userId);
-  const allCatResult = await allCatReq.query(`
-    SELECT DISTINCT c.name as category
-    FROM Expenses e JOIN Categories c ON e.category_id = c.id
-    WHERE e.user_id = @userId ORDER BY c.name ASC
-  `);
-
-  // All years list
-  const allYearsReq = pool.request();
-  allYearsReq.input('userId', mssql.UniqueIdentifier, userId);
-  const allYearsResult = await allYearsReq.query(`
-    SELECT DISTINCT LEFT(e.month, 4) AS year
-    FROM Expenses e
-    WHERE e.user_id = @userId ORDER BY year DESC
-  `);
-
-  // All months list
-  const allMonthsReq = pool.request();
-  allMonthsReq.input('userId', mssql.UniqueIdentifier, userId);
-  const allMonthsResult = await allMonthsReq.query(`
-    SELECT DISTINCT e.month
-    FROM Expenses e
-    WHERE e.user_id = @userId ORDER BY e.month DESC
-  `);
-
-  // Raw data for anomaly detection
-  const anomalyReq = pool.request();
-  buildFilterConditions(anomalyReq, filter, userId);
-  if (query && query.trim()) anomalyReq.input('queryFilter', mssql.NVarChar(200), `%${query.trim()}%`);
-
-  const anomalyRaw = await anomalyReq.query(`
-    SELECT e.id as uuid, e.month, c.name as category, e.amount, t.name as type
-    FROM Expenses e
-    JOIN Categories c ON e.category_id = c.id
-    JOIN Types t ON e.type_id = t.id
-    WHERE ${whereClause}
-    ORDER BY e.month ASC
-  `);
+  const [monthlyResult, catResult, matrixResult, allCatResult, allYearsResult, allMonthsResult, anomalyRaw] = await Promise.all([
+    scoped(`SELECT e.month, t.name as type, SUM(e.amount) AS total ${EXPENSE_FROM} WHERE {{WHERE}} GROUP BY e.month, t.name ORDER BY e.month ASC`),
+    scoped(`SELECT c.name as category, t.name as type, SUM(e.amount) AS total ${EXPENSE_FROM} WHERE {{WHERE}} GROUP BY c.name, t.name ORDER BY total DESC`),
+    scoped(`SELECT e.month, c.name as category, SUM(e.amount) AS total ${EXPENSE_FROM} WHERE {{WHERE}} GROUP BY e.month, c.name`),
+    byUser(`SELECT DISTINCT c.name as category FROM Expenses e JOIN Categories c ON e.category_id = c.id WHERE e.user_id = @userId ORDER BY c.name ASC`),
+    byUser(`SELECT DISTINCT LEFT(e.month, 4) AS year FROM Expenses e WHERE e.user_id = @userId ORDER BY year DESC`),
+    byUser(`SELECT DISTINCT e.month FROM Expenses e WHERE e.user_id = @userId ORDER BY e.month DESC`),
+    scoped(`SELECT e.id as uuid, e.month, c.name as category, e.amount, t.name as type ${EXPENSE_FROM} WHERE {{WHERE}} ORDER BY e.month ASC`),
+  ]);
 
   const monthlyTotals = {};
   for (const row of monthlyResult.recordset) {
@@ -288,6 +261,21 @@ export async function getAnalytics(config, params, userId) {
     }
   }
 
+  // month × category matrix, categories ordered by grand total
+  const matrixValues = {};
+  const catGrand = {};
+  for (const row of matrixResult.recordset) {
+    const amt = parseFloat(row.total);
+    if (!matrixValues[row.month]) matrixValues[row.month] = {};
+    matrixValues[row.month][row.category] = amt;
+    catGrand[row.category] = (catGrand[row.category] || 0) + amt;
+  }
+  const categoryMatrix = {
+    months: Object.keys(matrixValues).sort(),
+    categories: Object.entries(catGrand).sort((a, b) => b[1] - a[1]).map(([name]) => name),
+    values: matrixValues,
+  };
+
   const months = Object.keys(monthlyTotals).sort();
   const categoryTotals = catResult.recordset.map(r => [r.category, parseFloat(r.total), r.type]);
   const allCategories = allCatResult.recordset.map(r => r.category);
@@ -296,43 +284,142 @@ export async function getAnalytics(config, params, userId) {
 
   let openingBalance = 0;
   if (filter && filter !== 'all') {
-    const obReq = pool.request();
-    obReq.input('userId', mssql.UniqueIdentifier, userId);
     let cutoffStr = null;
     if (filter.startsWith('last')) {
-      const n = parseInt(filter.replace('last', ''));
-      const today = new Date();
-      let year = today.getFullYear();
-      let month = (today.getMonth() + 1) - (n - 1);
-      while (month <= 0) { month += 12; year -= 1; }
-      cutoffStr = `${year}-${String(month).padStart(2, '0')}`;
+      cutoffStr = shiftMonth(currentMonthStr(), -(parseInt(filter.replace('last', ''), 10) - 1));
     } else if (filter.length === 4) {
       cutoffStr = `${filter}-01`;
     } else {
       cutoffStr = filter;
     }
-
-    if (cutoffStr) {
-      obReq.input('cutoffStr', mssql.VarChar(7), cutoffStr);
-      const obResult = await obReq.query(`
-        SELECT SUM(CASE WHEN t.name = 'Income' THEN e.amount ELSE -e.amount END) as bal
-        FROM Expenses e
-        JOIN Types t ON e.type_id = t.id
-        WHERE e.user_id = @userId AND e.month < @cutoffStr
-      `);
-      openingBalance = obResult.recordset[0]?.bal || 0;
-    }
+    const obReq = pool.request();
+    obReq.input('userId', mssql.UniqueIdentifier, userId);
+    obReq.input('cutoffStr', mssql.VarChar(7), cutoffStr);
+    const obResult = await obReq.query(`
+      SELECT SUM(CASE WHEN t.name = 'Income' THEN e.amount ELSE -e.amount END) as bal
+      FROM Expenses e
+      JOIN Types t ON e.type_id = t.id
+      WHERE e.user_id = @userId AND e.month < @cutoffStr
+    `);
+    openingBalance = obResult.recordset[0]?.bal || 0;
   }
+
+  const usualCategories = (await getUsualCategories(pool, userId, currentMonthStr())).map(c => c.name);
 
   return {
     monthlyTotals,
     months,
     categoryTotals,
+    categoryMatrix,
     allCategories,
     allYears,
     allMonths,
     openingBalance,
+    usualCategories,
     rawForAnomalies: anomalyRaw.recordset,
+  };
+}
+
+// ---- Month summary ("This month" card) --------------------------------------
+
+/**
+ * Categories the user records every month: flagged recurring, or present in
+ * at least 4 of the 6 months before `refMonth`. Archived categories are excluded.
+ */
+async function getUsualCategories(pool, userId, refMonth) {
+  const req = pool.request();
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  req.input('fromMonth', mssql.VarChar(7), shiftMonth(refMonth, -6));
+  req.input('refMonth', mssql.VarChar(7), refMonth);
+  const res = await req.query(`
+    SELECT c.id, c.name, t.name AS type, c.icon, c.color, c.is_recurring, c.default_amount, c.budget_amount,
+           COUNT(DISTINCT CASE WHEN e.month >= @fromMonth AND e.month < @refMonth THEN e.month END) AS recent_months
+    FROM Categories c
+    JOIN Types t ON c.type_id = t.id
+    LEFT JOIN Expenses e ON e.category_id = c.id AND e.user_id = c.user_id
+    WHERE c.user_id = @userId AND c.archived = 0
+    GROUP BY c.id, c.name, t.name, c.icon, c.color, c.is_recurring, c.default_amount, c.budget_amount
+    HAVING c.is_recurring = 1
+        OR COUNT(DISTINCT CASE WHEN e.month >= @fromMonth AND e.month < @refMonth THEN e.month END) >= 4
+    ORDER BY c.name ASC
+  `);
+  return res.recordset;
+}
+
+export async function getMonthSummary(config, month, userId) {
+  const pool = await getPool(config);
+  const usual = await getUsualCategories(pool, userId, month);
+
+  const recordedReq = pool.request();
+  recordedReq.input('userId', mssql.UniqueIdentifier, userId);
+  recordedReq.input('month', mssql.VarChar(7), month);
+  const recorded = (await recordedReq.query(`
+    SELECT e.id AS uuid, c.id AS category_id, c.name AS category, t.name AS type, e.amount, e.notes
+    ${EXPENSE_FROM}
+    WHERE e.user_id = @userId AND e.month = @month
+  `)).recordset;
+
+  const lastReq = pool.request();
+  lastReq.input('userId', mssql.UniqueIdentifier, userId);
+  lastReq.input('month', mssql.VarChar(7), month);
+  lastReq.input('fromMonth', mssql.VarChar(7), shiftMonth(month, -12));
+  const history = (await lastReq.query(`
+    SELECT c.id AS category_id, e.month, e.amount
+    ${EXPENSE_FROM}
+    WHERE e.user_id = @userId AND e.month < @month AND e.month >= @fromMonth
+    ORDER BY e.month DESC
+  `)).recordset;
+
+  const lastByCategory = {};
+  for (const row of history) {
+    if (!lastByCategory[row.category_id]) lastByCategory[row.category_id] = { amount: parseFloat(row.amount), month: row.month };
+  }
+  const recordedByCategory = {};
+  for (const row of recorded) {
+    const key = row.category_id.toLowerCase();
+    if (!recordedByCategory[key]) recordedByCategory[key] = { uuid: row.uuid, amount: parseFloat(row.amount), notes: row.notes };
+  }
+
+  const items = usual.map(c => {
+    const key = c.id.toLowerCase();
+    const rec = recordedByCategory[key] || null;
+    const last = lastByCategory[c.id] || lastByCategory[key] || lastByCategory[c.id.toUpperCase()] || null;
+    const defaultAmount = c.default_amount !== null && c.default_amount !== undefined ? parseFloat(c.default_amount) : null;
+    return {
+      categoryId: c.id,
+      category: c.name,
+      type: c.type,
+      icon: c.icon,
+      color: c.color,
+      isRecurring: !!c.is_recurring,
+      budget: c.budget_amount !== null && c.budget_amount !== undefined ? parseFloat(c.budget_amount) : null,
+      recorded: !!rec,
+      uuid: rec?.uuid || null,
+      amount: rec ? rec.amount : null,
+      lastAmount: last ? last.amount : null,
+      lastMonth: last ? last.month : null,
+      suggestedAmount: defaultAmount ?? (last ? last.amount : null),
+    };
+  });
+
+  const monthTotal = recorded.filter(r => r.type !== 'Income').reduce((s, r) => s + parseFloat(r.amount), 0);
+  const monthIncome = recorded.filter(r => r.type === 'Income').reduce((s, r) => s + parseFloat(r.amount), 0);
+  const missing = items.filter(i => !i.recorded);
+  const extras = recorded
+    .filter(r => !usual.some(c => c.id.toLowerCase() === r.category_id.toLowerCase()))
+    .map(r => ({ category: r.category, type: r.type, amount: parseFloat(r.amount), uuid: r.uuid }));
+
+  return {
+    month,
+    items,
+    extras,
+    usualCount: items.length,
+    recordedCount: items.length - missing.length,
+    missingCount: missing.length,
+    missingSuggestedTotal: missing.reduce((s, i) => s + (i.suggestedAmount || 0), 0),
+    monthTotal,
+    monthIncome,
+    recordedRows: recorded.length,
   };
 }
 
@@ -344,6 +431,9 @@ const UNIQUE_VIOLATION = new Set([2601, 2627]);
  * Resolve (and lazily create) the Types / Categories rows for an expense.
  * `executor` is either a ConnectionPool or a Transaction so that the lookups
  * participate in the caller's transaction and roll back with it.
+ *
+ * Category names match case- and accent-insensitively so "Car insurance"
+ * reuses "Car Insurance" instead of creating a duplicate.
  *
  * Type names are restricted to the fixed allow-list: the Types table is
  * shared by every tenant and must not be polluted with free-form input.
@@ -371,7 +461,12 @@ async function resolveRelations(executor, categoryName, typeName, userId) {
     r.input('cname', mssql.NVarChar(100), name);
     r.input('tid', mssql.UniqueIdentifier, typeId);
     r.input('uid', mssql.UniqueIdentifier, userId);
-    const res = await r.query('SELECT id FROM Categories WHERE name = @cname AND type_id = @tid AND user_id = @uid');
+    const res = await r.query(`
+      SELECT TOP 1 id FROM Categories
+      WHERE name COLLATE Latin1_General_CI_AI = @cname COLLATE Latin1_General_CI_AI
+        AND type_id = @tid AND user_id = @uid
+      ORDER BY CASE WHEN name = @cname THEN 0 ELSE 1 END
+    `);
     return res.recordset[0]?.id;
   };
 
@@ -500,7 +595,7 @@ export async function deleteExpense(config, uuid, userId) {
 }
 
 /**
- * Bulk upsert used by the statement reconciler.
+ * Bulk upsert used by the statement reconciler and fill-month.
  * Items carrying a uuid update that row when the caller owns it; everything
  * else is merged by (month, category) exactly like createExpense.
  */
@@ -610,6 +705,34 @@ export async function getTypes(config) {
   return result.recordset;
 }
 
+const CATEGORY_SELECT = `
+  SELECT c.id, c.name, c.type_id, t.name AS type, c.icon, c.color, c.is_recurring, c.default_amount,
+         c.budget_amount, c.cadence, c.archived,
+         ISNULL(s.usage_count, 0) AS usage_count, s.last_month, la.amount AS last_amount
+  FROM Categories c
+  JOIN Types t ON c.type_id = t.id
+  OUTER APPLY (SELECT COUNT(*) AS usage_count, MAX(e.month) AS last_month FROM Expenses e WHERE e.category_id = c.id) s
+  OUTER APPLY (SELECT TOP 1 e.amount FROM Expenses e WHERE e.category_id = c.id ORDER BY e.month DESC) la`;
+
+function shapeCategory(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    type_id: row.type_id,
+    type: row.type,
+    icon: row.icon || null,
+    color: row.color || null,
+    is_recurring: !!row.is_recurring,
+    default_amount: row.default_amount === null || row.default_amount === undefined ? null : parseFloat(row.default_amount),
+    budget_amount: row.budget_amount === null || row.budget_amount === undefined ? null : parseFloat(row.budget_amount),
+    cadence: row.cadence || null,
+    archived: !!row.archived,
+    usage_count: row.usage_count || 0,
+    last_month: row.last_month || null,
+    last_amount: row.last_amount === null || row.last_amount === undefined ? null : parseFloat(row.last_amount),
+  };
+}
+
 export async function getCategories(config, userId, typeName) {
   const pool = await getPool(config);
   const req = pool.request();
@@ -621,18 +744,138 @@ export async function getCategories(config, userId, typeName) {
     where += ' AND t.name = @tname';
   }
 
-  const result = await req.query(`
-    SELECT c.id, c.name, c.type_id, t.name AS type
-    FROM Categories c
-    JOIN Types t ON c.type_id = t.id
-    WHERE ${where}
-    ORDER BY c.name ASC
-  `);
-  return result.recordset;
+  const result = await req.query(`${CATEGORY_SELECT} WHERE ${where} ORDER BY c.archived ASC, c.name ASC`);
+  return result.recordset.map(shapeCategory);
+}
+
+async function getCategoryById(executor, id, userId) {
+  const r = new mssql.Request(executor);
+  r.input('id', mssql.UniqueIdentifier, id);
+  r.input('userId', mssql.UniqueIdentifier, userId);
+  const res = await r.query(`${CATEGORY_SELECT} WHERE c.id = @id AND c.user_id = @userId`);
+  return res.recordset[0] ? shapeCategory(res.recordset[0]) : null;
 }
 
 export async function createCategory(config, { name, type }, userId) {
   const pool = await getPool(config);
-  const { typeId, catId } = await withTransaction(pool, (tx) => resolveRelations(tx, name, type, userId));
-  return { id: catId, name: String(name).trim(), type_id: typeId, type: normalizeType(type || 'Expense') };
+  const { catId } = await withTransaction(pool, (tx) => resolveRelations(tx, name, type, userId));
+  return getCategoryById(pool, catId, userId);
+}
+
+/**
+ * Partial update. Renames are checked case-insensitively against the user's
+ * other categories of the same type and answer 409 on a clash.
+ */
+export async function updateCategory(config, id, patch, userId) {
+  const pool = await getPool(config);
+  return withTransaction(pool, async (tx) => {
+    const existing = await getCategoryById(tx, id, userId);
+    if (!existing) throw httpError(404, 'Category not found');
+
+    let typeId = existing.type_id;
+    if (patch.type && patch.type !== existing.type) {
+      const tr = new mssql.Request(tx);
+      tr.input('tname', mssql.VarChar(50), patch.type);
+      typeId = (await tr.query('SELECT id FROM Types WHERE name = @tname')).recordset[0]?.id;
+      if (!typeId) throw httpError(400, 'Unknown type');
+    }
+
+    const newName = patch.name ?? existing.name;
+    if (patch.name !== undefined || patch.type !== undefined) {
+      const dup = new mssql.Request(tx);
+      dup.input('id', mssql.UniqueIdentifier, id);
+      dup.input('userId', mssql.UniqueIdentifier, userId);
+      dup.input('tid', mssql.UniqueIdentifier, typeId);
+      dup.input('cname', mssql.NVarChar(100), newName);
+      const clash = await dup.query(`
+        SELECT TOP 1 id FROM Categories
+        WHERE user_id = @userId AND type_id = @tid AND id <> @id
+          AND name COLLATE Latin1_General_CI_AI = @cname COLLATE Latin1_General_CI_AI
+      `);
+      if (clash.recordset.length > 0) {
+        throw httpError(409, `A ${patch.type || existing.type} category named "${newName}" already exists. Use merge instead.`);
+      }
+    }
+
+    const sets = [];
+    const req = new mssql.Request(tx);
+    req.input('id', mssql.UniqueIdentifier, id);
+    req.input('userId', mssql.UniqueIdentifier, userId);
+    if (patch.name !== undefined) { req.input('name', mssql.NVarChar(100), patch.name); sets.push('name = @name'); }
+    if (patch.type !== undefined) { req.input('typeId', mssql.UniqueIdentifier, typeId); sets.push('type_id = @typeId'); }
+    if (patch.icon !== undefined) { req.input('icon', mssql.NVarChar(16), patch.icon); sets.push('icon = @icon'); }
+    if (patch.color !== undefined) { req.input('color', mssql.VarChar(16), patch.color); sets.push('color = @color'); }
+    if (patch.is_recurring !== undefined) { req.input('isRecurring', mssql.Bit, patch.is_recurring); sets.push('is_recurring = @isRecurring'); }
+    if (patch.default_amount !== undefined) { req.input('defaultAmount', mssql.Decimal(18, 2), patch.default_amount); sets.push('default_amount = @defaultAmount'); }
+    if (patch.budget_amount !== undefined) { req.input('budgetAmount', mssql.Decimal(18, 2), patch.budget_amount); sets.push('budget_amount = @budgetAmount'); }
+    if (patch.cadence !== undefined) { req.input('cadence', mssql.VarChar(10), patch.cadence); sets.push('cadence = @cadence'); }
+    if (patch.archived !== undefined) { req.input('archived', mssql.Bit, patch.archived); sets.push('archived = @archived'); }
+
+    if (sets.length > 0) {
+      await req.query(`UPDATE Categories SET ${sets.join(', ')} WHERE id = @id AND user_id = @userId`);
+    }
+    // Keep expense rows' type in step with a category type change
+    if (patch.type !== undefined && typeId !== existing.type_id) {
+      const sync = new mssql.Request(tx);
+      sync.input('id', mssql.UniqueIdentifier, id);
+      sync.input('typeId', mssql.UniqueIdentifier, typeId);
+      sync.input('userId', mssql.UniqueIdentifier, userId);
+      await sync.query('UPDATE Expenses SET type_id = @typeId WHERE category_id = @id AND user_id = @userId');
+    }
+
+    return getCategoryById(tx, id, userId);
+  });
+}
+
+/** Deletes a category that has no expenses; used categories must be archived or merged. */
+export async function deleteCategory(config, id, userId) {
+  const pool = await getPool(config);
+  return withTransaction(pool, async (tx) => {
+    const existing = await getCategoryById(tx, id, userId);
+    if (!existing) throw httpError(404, 'Category not found');
+    if (existing.usage_count > 0) throw httpError(409, 'Category is in use. Archive it or merge it into another category.');
+    const req = new mssql.Request(tx);
+    req.input('id', mssql.UniqueIdentifier, id);
+    req.input('userId', mssql.UniqueIdentifier, userId);
+    await req.query('DELETE FROM Categories WHERE id = @id AND user_id = @userId');
+    return { success: true, deleted: true };
+  });
+}
+
+/**
+ * Moves every expense of the source categories onto the target category
+ * (adopting the target's type) and deletes the sources, all in one transaction.
+ */
+export async function mergeCategories(config, sourceIds, targetId, userId) {
+  const pool = await getPool(config);
+  return withTransaction(pool, async (tx) => {
+    const target = await getCategoryById(tx, targetId, userId);
+    if (!target) throw httpError(404, 'Target category not found');
+
+    let moved = 0;
+    const removed = [];
+    for (const sourceId of sourceIds) {
+      const source = await getCategoryById(tx, sourceId, userId);
+      if (!source) throw httpError(404, `Source category ${sourceId} not found`);
+
+      const mv = new mssql.Request(tx);
+      mv.input('source', mssql.UniqueIdentifier, sourceId);
+      mv.input('target', mssql.UniqueIdentifier, targetId);
+      mv.input('typeId', mssql.UniqueIdentifier, target.type_id);
+      mv.input('userId', mssql.UniqueIdentifier, userId);
+      const res = await mv.query(`
+        UPDATE Expenses SET category_id = @target, type_id = @typeId
+        WHERE category_id = @source AND user_id = @userId
+      `);
+      moved += res.rowsAffected[0] || 0;
+
+      const del = new mssql.Request(tx);
+      del.input('source', mssql.UniqueIdentifier, sourceId);
+      del.input('userId', mssql.UniqueIdentifier, userId);
+      await del.query('DELETE FROM Categories WHERE id = @source AND user_id = @userId');
+      removed.push(source.name);
+    }
+
+    return { success: true, moved, removed, target: await getCategoryById(tx, targetId, userId) };
+  });
 }

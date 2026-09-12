@@ -31,7 +31,8 @@ const COLORS = {
 export default function TrendsTab() {
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
   const analytics = useSelector(state => state.expenses.analytics);
-  const { monthlyTotals = {}, months = [], categoryTotals = [], allCategories = [], allYears = [] } = analytics;
+  const { monthlyTotals = {}, months = [], allCategories = [], allYears = [] } = analytics;
+  const matrix = analytics.categoryMatrix || { months: [], categories: [], values: {} };
 
   const [selectedCategory, setSelectedCategory] = useState('all');
 
@@ -54,12 +55,8 @@ export default function TrendsTab() {
         }))
       : [{
           label: selectedCategory,
-          data: months.map(m => {
-            const cat = categoryTotals.find(c => c[0] === selectedCategory);
-            // For per-category-per-month, use a simple filter on monthlyTotals
-            // (For full accuracy, we'd need a separate API endpoint; for now use proxy)
-            return 0; // placeholder — full category+month breakdown needs dedicated endpoint
-          }),
+          // month × category amounts come from the analytics matrix
+          data: months.map(m => matrix.values[m]?.[selectedCategory] || 0),
           borderColor: COLORS.primary,
           backgroundColor: 'rgba(99, 102, 241, 0.05)',
           borderWidth: 2,

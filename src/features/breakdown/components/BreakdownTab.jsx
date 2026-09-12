@@ -33,6 +33,7 @@ export default function BreakdownTab() {
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
   const analytics = useSelector(state => state.expenses.analytics);
   const { monthlyTotals = {}, months = [], categoryTotals = [] } = analytics;
+  const matrix = analytics.categoryMatrix || { months: [], categories: [], values: {} };
 
   // Type totals from server analytics (sum across all months)
   const typeTotals = { Expense: 0, EMI: 0, Saving: 0 };
@@ -99,14 +100,11 @@ export default function BreakdownTab() {
     }
   };
 
-  // 3. Top categories over time — use monthlyTotals from analytics (area chart by type not category for now)
+  // 3. Top five categories over time, from the month × category matrix
   const topCategories = catTotals.slice(0, 5).map(c => c[0]);
   const areaDatasets = topCategories.map((cat, idx) => ({
     label: cat,
-    data: months.map(m => {
-      // Best approximation: use total / categories ratio
-      return monthlyTotals[m]?.total ? 0 : 0; // placeholder — per-category-per-month needs dedicated endpoint
-    }),
+    data: months.map(m => matrix.values[m]?.[cat] || 0),
     borderColor: COLORS.palette[idx % COLORS.palette.length],
     backgroundColor: `${COLORS.palette[idx % COLORS.palette.length]}1f`,
     fill: true,

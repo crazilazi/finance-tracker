@@ -39,8 +39,25 @@ export function getCategoryTotals(data) {
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
 
+/**
+ * Categories that appear in most months of the dataset (at least 3 months and
+ * 80% of all months). Used when the caller cannot supply a server-derived list.
+ */
+export function learnUsualCategories(data, months) {
+  if (!data || !months || months.length < 3) return [];
+  const monthsByCat = {};
+  data.forEach(d => {
+    if (!monthsByCat[d.category]) monthsByCat[d.category] = new Set();
+    monthsByCat[d.category].add(d.month);
+  });
+  const threshold = Math.max(3, Math.ceil(months.length * 0.8));
+  return Object.entries(monthsByCat)
+    .filter(([, set]) => set.size >= threshold)
+    .map(([cat]) => cat);
+}
+
 // ── Anomaly Detection Engine ──
-export function detectAnomalies(data) {
+export function detectAnomalies(data, usualCategories = null) {
   const anomalies = [];
   if (!data || data.length < 5) return anomalies;
 
@@ -98,8 +115,12 @@ export function detectAnomalies(data) {
     }
   }
 
-  // 3. Missing/zero category detection
-  const expectedCategories = ['Pocket Kharch', 'Ghar Kharch', 'Home Loan', 'Bijali Bill', 'Internet Bill'];
+  // 3. Missing/zero category detection.
+  // Uses the caller-supplied "usual" categories (server-derived from the
+  // user's own history); falls back to learning them from the data itself.
+  const expectedCategories = Array.isArray(usualCategories)
+    ? usualCategories
+    : learnUsualCategories(data, sortedMonths);
   sortedMonths.forEach(month => {
     const monthData = data.filter(d => d.month === month);
     const monthCats = monthData.map(d => d.category);
@@ -278,60 +299,5 @@ export function calculateHealthScore(data, anomalies) {
   };
 }
 
-// ── Smart Global Query Filter ──
-export function matchSmartQuery(item, query) {
-  if (!query || !query.trim()) return true;
-
-  // Normalize space around operators: e.g., "amount > 1000" becomes "amount >1000"
-  let cleanQuery = query.toLowerCase()
-    .replace(/>\s+/g, '>')
-    .replace(/<\s+/g, '<')
-    .replace(/>=\s+/g, '>=')
-    .replace(/<=\s+/g, '<=')
-    .replace(/=\s+/g, '=');
-
-  const tokens = cleanQuery.trim().split(/\s+/);
-
-  return tokens.every(token => {
-    // 1. Amount comparison: >1000, <5000, >=200, <=10000, =500
-    const opMatch = token.match(/^([<>]=?|=)(\d+(\.\d+)?)$/);
-    if (opMatch) {
-      const op = opMatch[1];
-      const val = parseFloat(opMatch[2]);
-      if (op === '>') return item.amount > val;
-      if (op === '<') return item.amount < val;
-      if (op === '>=') return item.amount >= val;
-      if (op === '<=') return item.amount <= val;
-      if (op === '=') return item.amount === val;
-    }
-
-    // 2. Numeric range e.g. 1000-5000
-    const rangeMatch = token.match(/^(\d+)-(\d+)$/);
-    if (rangeMatch) {
-      const min = parseFloat(rangeMatch[1]);
-      const max = parseFloat(rangeMatch[2]);
-      return item.amount >= min && item.amount <= max;
-    }
-
-    // 3. Prefix fields
-    if (token.startsWith('type:')) {
-      return item.type.toLowerCase() === token.replace('type:', '');
-    }
-    if (token.startsWith('cat:') || token.startsWith('category:')) {
-      const cName = token.replace('cat:', '').replace('category:', '');
-      return item.category.toLowerCase().includes(cName);
-    }
-    if (token.startsWith('sheet:')) {
-      return item.sheet && item.sheet.toLowerCase().includes(token.replace('sheet:', ''));
-    }
-
-    // 4. Default general text match
-    return (
-      item.category.toLowerCase().includes(token) ||
-      item.type.toLowerCase().includes(token) ||
-      (item.sheet && item.sheet.toLowerCase().includes(token)) ||
-      item.amount.toString().includes(token)
-    );
-  });
-}
+// Smart query parsing lives in src/utils/smartQuery.js and is applied server-side.
 

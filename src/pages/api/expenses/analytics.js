@@ -16,19 +16,26 @@ export default async function handler(req, res) {
   try {
     const analyticsData = await dbProvider.getAnalytics(dbConfig, params, user.user_id);
 
-    // Run anomaly detection and health score on the filtered raw data
-    const { rawForAnomalies, monthlyTotals, months, categoryTotals, allCategories, allYears, allMonths } = analyticsData;
-    const anomalies = detectAnomalies(rawForAnomalies);
+    // Run anomaly detection and health score on the filtered raw data.
+    // "Missing entry" checks use the user's own usual categories, not a fixed list.
+    const {
+      rawForAnomalies, monthlyTotals, months, categoryTotals, categoryMatrix,
+      allCategories, allYears, allMonths, openingBalance, usualCategories,
+    } = analyticsData;
+    const anomalies = detectAnomalies(rawForAnomalies, usualCategories);
     const alerts = generateAlerts(rawForAnomalies, anomalies);
     const health = calculateHealthScore(rawForAnomalies, anomalies);
 
-    { res.status(200).json({
+    res.status(200).json({
       monthlyTotals,
       months,
       categoryTotals,
+      categoryMatrix,
       allCategories,
       allYears,
       allMonths,
+      openingBalance,
+      usualCategories,
       anomalies,
       alerts,
       healthScore: health.score,
@@ -38,8 +45,8 @@ export default async function handler(req, res) {
         stability: health.stability,
         anomalyScore: health.anomalyScore,
       },
-    }); return; }
+    });
   } catch (err) {
-    { sendServerError(res, err, 'GET /api/expenses/analytics'); return; }
+    sendServerError(res, err, 'GET /api/expenses/analytics');
   }
 }
