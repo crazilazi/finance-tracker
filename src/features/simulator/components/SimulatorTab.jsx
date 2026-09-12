@@ -14,6 +14,7 @@ import {
   Filler
 } from 'chart.js';
 import { updateSimulatorState } from '../simulatorSlice';
+import BoldText from '../../../components/ui/BoldText';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
@@ -386,12 +387,9 @@ export default function SimulatorTab() {
               </div>
               <div>
                 <h4 className="text-sm font-bold text-white mb-0.5">Simulated Portfolio Potential</h4>
-                <p
-                  className="text-xs text-gray-300 m-0 leading-relaxed font-medium"
-                  dangerouslySetInnerHTML={{
-                    __html: milestoneText.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-bold">$1</strong>')
-                  }}
-                />
+                <p className="text-xs text-gray-300 m-0 leading-relaxed font-medium">
+                  <BoldText text={milestoneText} strongClassName="text-white font-bold" />
+                </p>
               </div>
             </div>
 

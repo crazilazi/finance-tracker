@@ -16,7 +16,7 @@ export function parseStatementFile(fileBuffer, knownCategories = [], existingDat
   for (let i = 0; i < Math.min(jsonData.length, 15); i++) {
     if (!jsonData[i]) continue;
     const rowStr = jsonData[i].join(' ').toLowerCase();
-    if (rowStr.includes('date') || rowStr.includes('narration') || rowStr.includes('description') || rowStr.includes('amount') || rowStr.includes('debit') || rowStr.includes('credit')) {
+    if (rowStr.includes('date') || rowStr.includes('month') || rowStr.includes('narration') || rowStr.includes('description') || rowStr.includes('amount') || rowStr.includes('debit') || rowStr.includes('credit')) {
       headerRowIdx = i;
       break;
     }
@@ -32,7 +32,9 @@ export function parseStatementFile(fileBuffer, knownCategories = [], existingDat
   const amountIdx = headers.findIndex(h => h === 'amount' || h.includes('amt') || h.includes('transaction amount'));
   const debitIdx = headers.findIndex(h => h.includes('debit') || h.includes('withdrawal') || h.includes('dr'));
   const creditIdx = headers.findIndex(h => h.includes('credit') || h.includes('deposit') || h.includes('cr'));
-  const typeIdx = headers.findIndex(h => h.includes('type') || h.includes('cr/dr'));
+  const typeIdx = headers.findIndex(h => h === 'type' || h.includes('cr/dr'));
+  const monthIdx = headers.findIndex(h => h === 'month');
+  const catIdx = headers.findIndex(h => h === 'category');
 
   const parsedRows = [];
 
@@ -46,12 +48,18 @@ export function parseStatementFile(fileBuffer, knownCategories = [], existingDat
     let rawAmount = amountIdx !== -1 ? row[amountIdx] : null;
     const rawDebit = debitIdx !== -1 ? row[debitIdx] : null;
     const rawCredit = creditIdx !== -1 ? row[creditIdx] : null;
+    const rawMonth = monthIdx !== -1 ? row[monthIdx] : null;
+    const rawExplicitCategory = catIdx !== -1 ? row[catIdx] : null;
+    const rawExplicitType = typeIdx !== -1 ? row[typeIdx] : null;
 
-    if (!rawDate && !rawAmount && !rawDebit && !rawCredit) continue;
+    if (!rawDate && !rawMonth && !rawAmount && !rawDebit && !rawCredit) continue;
 
     // Process Date -> YYYY-MM
     let month = new Date().toISOString().slice(0, 7); // fallback
-    if (rawDate) {
+    if (rawMonth) {
+      // Direct YYYY-MM string
+      month = String(rawMonth).trim();
+    } else if (rawDate) {
       const d = new Date(rawDate);
       if (!isNaN(d.getTime())) {
         month = d.toISOString().slice(0, 7);
@@ -71,47 +79,77 @@ export function parseStatementFile(fileBuffer, knownCategories = [], existingDat
     let amount = 0;
     let type = 'Expense';
 
-    const numDebit = rawDebit ? parseFloat(String(rawDebit).replace(/,/g, '')) : 0;
-    const numCredit = rawCredit ? parseFloat(String(rawCredit).replace(/,/g, '')) : 0;
+    const numDebit = rawDebit ? parseFloat(String(rawDebit).replace(/[^\d.-]/g, '')) : 0;
+    const numCredit = rawCredit ? parseFloat(String(rawCredit).replace(/[^\d.-]/g, '')) : 0;
 
     if (numDebit > 0) {
       amount = numDebit;
-      type = 'Expense';
     } else if (numCredit > 0) {
       amount = numCredit;
-      type = 'Income';
     } else if (rawAmount) {
-      amount = Math.abs(parseFloat(String(rawAmount).replace(/,/g, '')) || 0);
-      if (String(rawAmount).includes('-') || (typeIdx !== -1 && String(row[typeIdx]).toLowerCase().includes('dr'))) {
+      amount = Math.abs(parseFloat(String(rawAmount).replace(/[^\d.-]/g, '')) || 0);
+    }
+
+    if (rawExplicitType) {
+      const et = String(rawExplicitType).toLowerCase();
+      if (et.includes('expense')) type = 'Expense';
+      else if (et.includes('income')) type = 'Income';
+      else if (et.includes('saving')) type = 'Saving';
+      else if (et.includes('emi')) type = 'EMI';
+    } else {
+      if (numDebit > 0) {
         type = 'Expense';
-      } else if (typeIdx !== -1 && String(row[typeIdx]).toLowerCase().includes('cr')) {
+      } else if (numCredit > 0) {
         type = 'Income';
+      } else if (rawAmount) {
+        if (String(rawAmount).includes('-') || (typeIdx !== -1 && String(row[typeIdx]).toLowerCase().includes('dr'))) {
+          type = 'Expense';
+        } else if (typeIdx !== -1 && String(row[typeIdx]).toLowerCase().includes('cr')) {
+          type = 'Income';
+        }
       }
     }
 
     if (!amount || amount === 0) continue;
 
-    // Smart Category Normalization
+    // Smart Category Normalization using fuzzy match
     const cleanDesc = String(rawDesc || '').trim();
     let category = 'Uncategorized';
+    let highestConfidence = 0;
 
-    // Try fuzzy matching against knownCategories
-    const matchedKnown = knownCategories.find(c => cleanDesc.toLowerCase().includes(c.toLowerCase()));
-    if (matchedKnown) {
-      category = matchedKnown;
-    } else {
-      const lowerDesc = cleanDesc.toLowerCase();
-      if (lowerDesc.includes('rent')) category = 'Room Rent';
-      else if (lowerDesc.includes('swiggy') || lowerDesc.includes('zomato') || lowerDesc.includes('food')) category = 'Ghar Kharch';
-      else if (lowerDesc.includes('electricity') || lowerDesc.includes('power') || lowerDesc.includes('bijali')) category = 'Bijali Bill';
-      else if (lowerDesc.includes('salary') || lowerDesc.includes('payroll')) category = 'Salary';
-      else if (lowerDesc.includes('cc') || lowerDesc.includes('card')) category = 'HDFC CC';
-      else {
-        category = cleanDesc.split(/\s+/).slice(0, 3).join(' ') || 'General Expense';
+    const lowerDesc = cleanDesc.toLowerCase();
+    
+    if (rawExplicitCategory) {
+      category = String(rawExplicitCategory).trim();
+      highestConfidence = 100;
+    } else if (knownCategories && knownCategories.length > 0) {
+      for (const known of knownCategories) {
+        const knownLower = known.toLowerCase();
+        
+        // Exact match
+        if (lowerDesc === knownLower) {
+          category = known;
+          highestConfidence = 100;
+          break;
+        }
+
+        // Substring match
+        if (lowerDesc.includes(knownLower)) {
+          // longer match is better
+          const score = (knownLower.length / lowerDesc.length) * 100;
+          if (score > highestConfidence) {
+            highestConfidence = score;
+            category = known;
+          }
+        }
       }
     }
 
-    if (type !== 'Income') {
+    if (highestConfidence === 0) {
+      category = cleanDesc.split(/\s+/).slice(0, 3).join(' ') || 'General Expense';
+    }
+
+    if (type !== 'Income' && type !== 'Saving' && type !== 'EMI' && !rawExplicitType) {
       type = guessType(category);
     }
 

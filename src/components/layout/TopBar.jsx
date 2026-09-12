@@ -1,11 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Button, Select, Badge, Drawer, Switch, Input, Tooltip, Avatar } from 'antd';
-import { MenuOutlined, BellOutlined, SunOutlined, MoonOutlined, EyeOutlined, EyeInvisibleOutlined, LogoutOutlined } from '@ant-design/icons';
+import { Button, Select, Badge, Drawer, Switch, Input, Tooltip, Avatar, Popover } from 'antd';
+import { MenuOutlined, BellOutlined, SunOutlined, MoonOutlined, EyeOutlined, EyeInvisibleOutlined, LogoutOutlined, SearchOutlined } from '@ant-design/icons';
 import { setTheme, setFilter, setQuery, toggleHideAmounts } from '../../features/expenses/expensesSlice';
 import { DARK } from '../ThemeProvider';
+import useViewport from '../../hooks/useViewport';
 
 const { Option } = Select;
+
+const SMART_FILTER_HELP = (
+  <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+    <strong>💡 Smart Filter syntax examples:</strong>
+    <ul style={{ paddingLeft: 14, margin: '4px 0 0 0' }}>
+      <li><code>rent</code> (matches category)</li>
+      <li><code>&gt;5000</code> or <code>1000-5000</code> (matches amount)</li>
+      <li><code>type:emi</code> or <code>type:saving</code></li>
+      <li><code>sheet:july</code> (matches sheet name)</li>
+    </ul>
+  </div>
+);
 
 export default function TopBar({ setMobileOpen, palette }) {
   const dispatch    = useDispatch();
@@ -18,17 +31,13 @@ export default function TopBar({ setMobileOpen, palette }) {
   const alerts      = analytics.alerts || [];
   const user        = useSelector(state => state.expenses.user);
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [isSmall, setIsSmall] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // isSmall: phones. isCompact: anything narrower than ~1100px, where the
+  // sidebar plus the full control cluster no longer fit side by side.
+  const { isMobile: isSmall, isCompact } = useViewport();
 
   const c = palette || DARK;
-
-  // Detect small screen
-  useEffect(() => {
-    const check = () => setIsSmall(window.innerWidth < 768);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
 
   const uniqueMonths = analytics.allMonths || [];
 
@@ -53,6 +62,7 @@ export default function TopBar({ setMobileOpen, palette }) {
     breakdown: ['Breakdown', 'Detailed category analysis'],
     insights:  ['AI Insights', 'Smart observations about your finances'],
     simulator: ['What-If SIP Simulator', 'Simulate investing your expenses in mutual funds'],
+    reconcile: ['Reconcile', 'Match bank statements to your records'],
     data:      ['Data Table', 'Browse all expense records'],
   };
   const currentTitle = titles[currentPage] || ['Tracker', 'Smart analytics'];
@@ -64,11 +74,31 @@ export default function TopBar({ setMobileOpen, palette }) {
     info:    { borderLeft: '4px solid #3b82f6', background: 'rgba(59,130,246,0.08)', color: '#93c5fd' },
   };
 
+  const iconButtonStyle = {
+    width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 8, flexShrink: 0,
+  };
+
+  const smartQueryInput = (
+    <Input
+      placeholder="🔍 Smart filter..."
+      value={query}
+      onChange={(e) => dispatch(setQuery(e.target.value))}
+      allowClear
+      autoFocus={isCompact}
+      style={{ width: isCompact ? 'min(260px, 80vw)' : 190 }}
+      className="smart-query-input"
+    />
+  );
+
   return (
     <>
       <header style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '0 12px', height: 56, flexShrink: 0,
+        padding: '0 12px',
+        paddingTop: 'env(safe-area-inset-top)',
+        height: 'calc(56px + env(safe-area-inset-top))',
+        flexShrink: 0,
         borderBottom: `1px solid ${c.BORDER}`,
         background: c.BG_CARD,
         position: 'sticky', top: 0, zIndex: 30,
@@ -77,7 +107,7 @@ export default function TopBar({ setMobileOpen, palette }) {
       }}>
 
         {/* ── Left: Hamburger + Page Title ─────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 60, flex: '1 1 auto', overflow: 'hidden' }}>
           {/* Hamburger — always visible on mobile, hidden on desktop */}
           <Button
             type="text"
@@ -94,8 +124,8 @@ export default function TopBar({ setMobileOpen, palette }) {
             }}>
               {currentTitle[0]}
             </h1>
-            {!isSmall && (
-              <p style={{ margin: 0, fontSize: 11, color: c.TEXT_MUTED, fontWeight: 500 }}>
+            {!isCompact && (
+              <p style={{ margin: 0, fontSize: 11, color: c.TEXT_MUTED, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {currentTitle[1]}
               </p>
             )}
@@ -103,29 +133,38 @@ export default function TopBar({ setMobileOpen, palette }) {
         </div>
 
         {/* ── Right: Controls ──────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: isSmall ? 4 : 10, flexShrink: 0 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          gap: isSmall ? 2 : isCompact ? 6 : 10,
+          flex: '0 1 auto', minWidth: 0,
+        }}>
 
-          {/* Smart Query Search — hidden on very small screens */}
-          {!isSmall && (
-            <Tooltip title={
-              <div style={{ fontSize: 11, lineHeight: 1.5 }}>
-                <strong>💡 Smart Filter syntax examples:</strong>
-                <ul style={{ paddingLeft: 14, margin: '4px 0 0 0' }}>
-                  <li><code>rent</code> (matches category)</li>
-                  <li><code>&gt;5000</code> or <code>1000-5000</code> (matches amount)</li>
-                  <li><code>type:emi</code> or <code>type:saving</code></li>
-                  <li><code>sheet:july</code> (matches sheet name)</li>
-                </ul>
-              </div>
-            } placement="bottomLeft">
-              <Input
-                placeholder="🔍 Smart filter..."
-                value={query}
-                onChange={(e) => dispatch(setQuery(e.target.value))}
-                allowClear
-                style={{ width: 190 }}
-                className="smart-query-input"
-              />
+          {/* Smart Query Search — inline on wide screens, behind an icon otherwise */}
+          {isCompact ? (
+            <Popover
+              open={searchOpen}
+              onOpenChange={setSearchOpen}
+              trigger="click"
+              placement="bottomRight"
+              content={
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {smartQueryInput}
+                  {SMART_FILTER_HELP}
+                </div>
+              }
+            >
+              <Badge dot={!!query} offset={[-4, 4]}>
+                <Button
+                  type="text"
+                  icon={<SearchOutlined style={{ fontSize: 16, color: query ? '#6366f1' : c.TEXT_MUTED }} />}
+                  title="Smart filter"
+                  style={iconButtonStyle}
+                />
+              </Badge>
+            </Popover>
+          ) : (
+            <Tooltip title={SMART_FILTER_HELP} placement="bottomLeft">
+              {smartQueryInput}
             </Tooltip>
           )}
 
@@ -133,7 +172,7 @@ export default function TopBar({ setMobileOpen, palette }) {
           <Select
             value={filter}
             onChange={(val) => dispatch(setFilter(val))}
-            style={{ width: isSmall ? 110 : 170 }}
+            style={{ width: isSmall ? 104 : isCompact ? 130 : 170, flexShrink: 0 }}
             size={isSmall ? 'small' : 'middle'}
           >
             <Option value="all">All Time</Option>
@@ -166,7 +205,7 @@ export default function TopBar({ setMobileOpen, palette }) {
               : <EyeOutlined style={{ fontSize: 16, color: c.TEXT_MUTED }} />}
             onClick={() => dispatch(toggleHideAmounts())}
             title={hideAmounts ? 'Show Amounts' : 'Hide Amounts'}
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+            style={iconButtonStyle}
           />
 
           {/* Theme Toggle */}
@@ -175,6 +214,8 @@ export default function TopBar({ setMobileOpen, palette }) {
             onChange={(checked) => dispatch(setTheme(checked ? 'dark' : 'light'))}
             checkedChildren={<MoonOutlined />}
             unCheckedChildren={<SunOutlined />}
+            size={isSmall ? 'small' : 'default'}
+            style={{ flexShrink: 0 }}
           />
 
           {/* Alert Bell */}
@@ -183,24 +224,26 @@ export default function TopBar({ setMobileOpen, palette }) {
               type="text"
               icon={<BellOutlined style={{ fontSize: 16, color: c.TEXT_MUTED }} />}
               onClick={() => setDrawerVisible(true)}
-              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+              style={iconButtonStyle}
             />
           </Badge>
 
           {/* User Avatar + Logout */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderLeft: `1px solid ${c.BORDER}`, paddingLeft: 8 }}>
-            <Avatar
-              style={{ backgroundColor: '#6366f1', verticalAlign: 'middle', flexShrink: 0 }}
-              size="small"
-            >
-              {user.username ? user.username[0].toUpperCase() : 'U'}
-            </Avatar>
-            {!isSmall && (
-              <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: c.TEXT_BASE, lineHeight: 1.2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderLeft: `1px solid ${c.BORDER}`, paddingLeft: isSmall ? 4 : 8, flexShrink: 0 }}>
+            <Tooltip title={isCompact ? `${user.username || 'User'}${user.email ? ` · ${user.email}` : ''}` : null}>
+              <Avatar
+                style={{ backgroundColor: '#6366f1', verticalAlign: 'middle', flexShrink: 0 }}
+                size="small"
+              >
+                {user.username ? user.username[0].toUpperCase() : 'U'}
+              </Avatar>
+            </Tooltip>
+            {!isCompact && (
+              <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', maxWidth: 140, overflow: 'hidden' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.TEXT_BASE, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {user.username}
                 </span>
-                <span style={{ fontSize: 10, color: c.TEXT_MUTED }}>
+                <span style={{ fontSize: 10, color: c.TEXT_MUTED, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {user.email || 'authenticated'}
                 </span>
               </div>
@@ -223,8 +266,7 @@ export default function TopBar({ setMobileOpen, palette }) {
         placement="right"
         onClose={() => setDrawerVisible(false)}
         open={drawerVisible}
-        size="default"
-        style={{ width: 360 }}
+        width="min(360px, 100vw)"
         styles={{ body: { padding: 16, background: c.BG_CARD }, header: { background: c.BG_CARD, borderBottom: `1px solid ${c.BORDER}` } }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

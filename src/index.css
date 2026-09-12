@@ -333,7 +333,13 @@ html, body, #root {
 [data-theme="dark"] .bg-dark-card     { background-color: #161d30 !important; }
 [data-theme="dark"] .border-dark-border { border-color: #25304b !important; }
 
-/* ─── Mobile Responsive ──────────────────────────────────── */
+/* ─── Responsive ─────────────────────────────────────────────
+   Breakpoint contract (keep in sync with src/hooks/useViewport.js):
+     mobile   < 768px    sidebar in drawer, single column, icon-only buttons
+     tablet   768–1023px collapsed 72px sidebar rail, 1–2 columns
+     laptop   1024–1439px
+     desktop  ≥ 1440px
+   ───────────────────────────────────────────────────────────── */
 
 /* Hide the desktop sidebar on mobile, show hamburger */
 @media (max-width: 767px) {
@@ -376,11 +382,6 @@ html, body, #root {
   .ant-pagination-total-text {
     display: none;
   }
-
-  /* Anomaly list item: stack on mobile */
-  .anomaly-item {
-    flex-direction: column !important;
-  }
 }
 
 /* Hide hamburger on desktop */
@@ -390,4 +391,19 @@ html, body, #root {
   }
 }
 
-/* Make the floating selection bar compact on mobile handled via JS isMobile flag */
+/* Tablet: slightly tighter cards while the sidebar rail is collapsed */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .ant-card-body {
+    padding: 16px !important;
+  }
+  .ant-card-head {
+    padding: 0 16px !important;
+  }
+}
+
+/* Collapsed sidebar rail (tablet): center icons, keep tooltips readable */
+.sidebar-desktop .ant-menu-inline-collapsed > .ant-menu-item {
+  padding-inline: calc(50% - 8px) !important;
+}
+
+/* Floating selection bar compactness on mobile is handled via the useViewport hook */

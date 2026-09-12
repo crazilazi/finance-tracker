@@ -1,32 +1,20 @@
 import * as dbProvider from '../../../lib/db/dbProvider';
+import { dbConfig } from '../../../lib/db/config';
 import { detectAnomalies, generateAlerts, calculateHealthScore } from '../../../utils/financeEngine';
-
-const dbConfig = {
-  dataSource: process.env.DATA_SOURCE || 'json',
-  connectionString: process.env.DATABASE_URL,
-};
-
-import { getSessionUser } from '../../../lib/auth';
+import { requireUser, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
+import { validateAnalyticsParams } from '../../../lib/validation';
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
-  }
+  if (req.method !== 'GET') { methodNotAllowed(res, ['GET']); return; }
 
-  const user = getSessionUser(req);
-  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const user = requireUser(req, res);
+  if (!user) return;
 
-  const { filter = 'all', query = '' } = req.query;
-  const rootDir = process.cwd();
+  const { value: params, error } = validateAnalyticsParams(req.query);
+  if (error) { res.status(400).json({ error }); return; }
 
   try {
-    const analyticsData = await dbProvider.getAnalytics(
-      dbConfig,
-      { filter, query },
-      rootDir,
-      user.username
-    );
+    const analyticsData = await dbProvider.getAnalytics(dbConfig, params, user.user_id);
 
     // Run anomaly detection and health score on the filtered raw data
     const { rawForAnomalies, monthlyTotals, months, categoryTotals, allCategories, allYears, allMonths } = analyticsData;
@@ -34,7 +22,7 @@ export default async function handler(req, res) {
     const alerts = generateAlerts(rawForAnomalies, anomalies);
     const health = calculateHealthScore(rawForAnomalies, anomalies);
 
-    return res.status(200).json({
+    { res.status(200).json({
       monthlyTotals,
       months,
       categoryTotals,
@@ -50,8 +38,8 @@ export default async function handler(req, res) {
         stability: health.stability,
         anomalyScore: health.anomalyScore,
       },
-    });
+    }); return; }
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    { sendServerError(res, err, 'GET /api/expenses/analytics'); return; }
   }
 }

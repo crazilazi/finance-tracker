@@ -46,6 +46,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
           amount: editRecord.amount,
           category: editRecord.category,
           type: editRecord.type,
+          tags: editRecord.tags || '',
           propagateYearly: false
         });
       } else {
@@ -55,6 +56,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
           month: dayjs(),
           monthRange: null,
           type: 'Expense',
+          tags: '',
           propagateYearly: false
         });
       }
@@ -140,7 +142,8 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
     const payload = {
       amount: parseFloat(values.amount),
       category: values.category.trim(),
-      type: values.type
+      type: values.type,
+      tags: values.tags ? values.tags.trim() : ''
     };
 
     if (isRangeMode && values.monthRange) {
@@ -257,7 +260,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
           </Form.Item>
 
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               {isRangeMode ? (
                 <Form.Item
                   name="monthRange"
@@ -276,7 +279,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
                 </Form.Item>
               )}
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="amount"
                 label={<span className="text-gray-400 font-bold text-xs">Amount (₹)</span>}
@@ -287,7 +290,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="category"
                 label={<span className="text-gray-400 font-bold text-xs">Category</span>}
@@ -304,7 +307,7 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="type"
                 label={<span className="text-gray-400 font-bold text-xs">Type</span>}
@@ -316,6 +319,17 @@ export default function ExpenseModal({ open, onClose, editRecord }) {
                   <Option value="Saving">🐷 Saving</Option>
                   <Option value="Income">🟢 Income</Option>
                 </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16} className="mb-2">
+            <Col span={24}>
+              <Form.Item
+                name="tags"
+                label={<span className="text-gray-400 font-bold text-xs">Notes (Optional)</span>}
+              >
+                <Input placeholder="e.g. Vacation with family" className="w-full bg-white/5 border-dark-border text-white placeholder-gray-600 rounded-lg py-1.5" />
               </Form.Item>
             </Col>
           </Row>

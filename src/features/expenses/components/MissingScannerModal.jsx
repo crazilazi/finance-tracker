@@ -135,10 +135,10 @@ export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate 
         header: { background: isDark ? '#161d30' : '#ffffff', color: isDark ? '#ffffff' : '#000000' }
       }}
     >
-      <div style={{ padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Header Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: isDark ? '#1f293d' : '#f3f4f6', padding: '12px 16px', borderRadius: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ padding: '0 clamp(12px, 3vw, 24px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Header Controls: wraps onto two rows on phones */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: isDark ? '#1f293d' : '#f3f4f6', padding: '12px 16px', borderRadius: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#d1d5db' : '#374151' }}>Audit Target Year:</span>
             <Select
               value={selectedYear}
@@ -151,7 +151,7 @@ export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate 
               ))}
             </Select>
           </div>
-          <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: missingMonths.length > 0 ? '#ef4444' : '#10b981', fontWeight: 600 }}>
               {missingMonths.length > 0 ? `⚠️ ${missingMonths.length} Months Missing` : '✅ All Months Active'}
             </span>
@@ -194,7 +194,7 @@ export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate 
 
         {/* 2. Category Gaps Breakdown */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#f3f4f6' : '#1f2937' }}>
               📋 Recurring Category Gaps ({categoryGaps.length} categories)
             </span>
@@ -207,6 +207,7 @@ export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate 
             dataSource={categoryGaps}
             columns={columns}
             pagination={{ pageSize: 5 }}
+            scroll={{ x: 560 }}
             size="small"
             className={isDark ? 'dark-table' : ''}
             style={{ border: `1px solid ${isDark ? '#232e4c' : '#e5e7eb'}`, borderRadius: 8, overflow: 'hidden' }}

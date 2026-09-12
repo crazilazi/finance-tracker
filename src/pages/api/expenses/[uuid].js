@@ -1,40 +1,37 @@
 import * as dbProvider from '../../../lib/db/dbProvider';
-import path from 'path';
-
-const dbConfig = {
-  dataSource: process.env.DATA_SOURCE || 'json',
-  connectionString: process.env.DATABASE_URL,
-};
-
-import { getSessionUser } from '../../../lib/auth';
+import { dbConfig } from '../../../lib/db/config';
+import { requireUser, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
+import { validateExpense, isGuid } from '../../../lib/validation';
 
 export default async function handler(req, res) {
-  const user = getSessionUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  const user = requireUser(req, res);
+  if (!user) return;
 
   const { uuid } = req.query;
-  const rootDir = process.cwd();
+  if (!isGuid(uuid)) { res.status(400).json({ error: 'Invalid expense id' }); return; }
 
   if (req.method === 'PUT') {
+    const { value, error } = validateExpense(req.body);
+    if (error) { res.status(400).json({ error }); return; }
+
     try {
-      const result = await dbProvider.updateExpense(dbConfig, uuid, req.body, rootDir, user.username);
-      return res.status(200).json(result);
+      const result = await dbProvider.updateExpense(dbConfig, uuid, value, user.user_id);
+      if (!result.updated) { res.status(404).json({ error: 'Expense not found' }); return; }
+      { res.status(200).json(result); return; }
     } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  } 
-  
-  if (req.method === 'DELETE') {
-    try {
-      const result = await dbProvider.deleteExpense(dbConfig, uuid, rootDir, user.username);
-      return res.status(200).json(result);
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
+      { sendServerError(res, err, 'PUT /api/expenses/[uuid]'); return; }
     }
   }
 
-  res.setHeader('Allow', ['PUT', 'DELETE']);
-  res.status(405).end(`Method ${req.method} Not Allowed`);
+  if (req.method === 'DELETE') {
+    try {
+      const result = await dbProvider.deleteExpense(dbConfig, uuid, user.user_id);
+      if (!result.deleted) { res.status(404).json({ error: 'Expense not found' }); return; }
+      { res.status(200).json(result); return; }
+    } catch (err) {
+      { sendServerError(res, err, 'DELETE /api/expenses/[uuid]'); return; }
+    }
+  }
+
+  { methodNotAllowed(res, ['PUT', 'DELETE']); return; }
 }

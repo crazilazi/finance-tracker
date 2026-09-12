@@ -31,13 +31,14 @@ export default function Login() {
       }} />
 
       <Card style={{
-        width: 400,
+        width: '100%',
+        maxWidth: 400,
         background: 'rgba(22, 29, 48, 0.7)',
         backdropFilter: 'blur(16px)',
         border: '1px solid rgba(255, 255, 255, 0.05)',
         borderRadius: 24,
         textAlign: 'center',
-        padding: '32px 16px',
+        padding: 'clamp(16px, 5vw, 32px) 16px',
         boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.5)',
       }} styles={{ body: { padding: 0 } }}>
         {/* Brand Logo */}

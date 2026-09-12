@@ -11,12 +11,12 @@ const AnomaliesTab = lazy(() => import('./features/anomalies/components/Anomalie
 const BreakdownTab = lazy(() => import('./features/breakdown/components/BreakdownTab'));
 const InsightsTab = lazy(() => import('./features/insights/components/InsightsTab'));
 const SimulatorTab = lazy(() => import('./features/simulator/components/SimulatorTab'));
+const ReconcileTab = lazy(() => import('./features/expenses/components/StatementReconcilerTab'));
 const DataTableTab = lazy(() => import('./features/expenses/components/DataTableTab'));
 
 import ExpenseModal from './features/expenses/components/ExpenseModal';
 import CopyMonthModal from './features/expenses/components/CopyMonthModal';
 import MissingScannerModal from './features/expenses/components/MissingScannerModal';
-import StatementReconcilerModal from './features/expenses/components/StatementReconcilerModal';
 import Login from './components/Login';
 import { DARK, LIGHT } from './components/ThemeProvider';
 import { setCurrentPage } from './features/expenses/expensesSlice';
@@ -34,7 +34,6 @@ export default function App() {
   const [modalOpen, setModalOpen]   = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [scannerModalOpen, setScannerModalOpen] = useState(false);
-  const [reconcileModalOpen, setReconcileModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
 
   const initialized = useRef(false);
@@ -81,7 +80,8 @@ export default function App() {
       case 'breakdown':  TabComponent = <BreakdownTab />; break;
       case 'insights':   TabComponent = <InsightsTab />; break;
       case 'simulator':  TabComponent = <SimulatorTab />; break;
-      case 'data':       TabComponent = <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} onScanMissing={() => setScannerModalOpen(true)} onReconcile={() => setReconcileModalOpen(true)} />; break;
+      case 'reconcile':  TabComponent = <ReconcileTab />; break;
+      case 'data':       TabComponent = <DataTableTab onEdit={handleEdit} onCopyTemplate={() => setCopyModalOpen(true)} onScanMissing={() => setScannerModalOpen(true)} />; break;
       default:           TabComponent = <DashboardTab />;
     }
 
@@ -165,7 +165,12 @@ export default function App() {
       </div>
 
       {/* ── FAB: Add Expense button ────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 32, right: 32, zIndex: 50 }}>
+      <div style={{
+        position: 'fixed',
+        bottom: 'calc(24px + env(safe-area-inset-bottom))',
+        right: 'calc(24px + env(safe-area-inset-right))',
+        zIndex: 50,
+      }}>
         <Button
           type="primary"
           shape="circle"
@@ -197,17 +202,10 @@ export default function App() {
         onClose={() => setCopyModalOpen(false)}
       />
 
-      {/* ── Missing Expenses Scanner modal ─────────────────────── */}
       <MissingScannerModal
         open={scannerModalOpen}
         onClose={() => setScannerModalOpen(false)}
         onOpenCopyTemplate={() => setCopyModalOpen(true)}
-      />
-
-      {/* ── Bank Statement Reconciler modal ────────────────────── */}
-      <StatementReconcilerModal
-        open={reconcileModalOpen}
-        onClose={() => setReconcileModalOpen(false)}
       />
     </div>
   );
