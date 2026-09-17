@@ -20,7 +20,6 @@ async function withRetry(operation, retries = 3, delayMs = 1000) {
 
 const wrap = (fn) => (...args) => withRetry(() => fn(...args));
 
-export const getExpenses = wrap(mssqlProvider.getExpenses);
 export const getExpensesPaginated = wrap(mssqlProvider.getExpensesPaginated);
 export const getAnalytics = wrap(mssqlProvider.getAnalytics);
 export const getMonthSummary = wrap(mssqlProvider.getMonthSummary);
@@ -32,6 +31,8 @@ export const verifyOrCreateUser = wrap(mssqlProvider.verifyOrCreateUser);
 
 export const getUserSettings = wrap(mssqlProvider.getUserSettings);
 export const saveUserSettings = wrap(mssqlProvider.saveUserSettings);
+export const isUnlockGrantRevoked = wrap(mssqlProvider.isUnlockGrantRevoked);
+export const revokeUnlockGrant = wrap(mssqlProvider.revokeUnlockGrant);
 
 export const getTypes = wrap(mssqlProvider.getTypes);
 export const getCategoryNameList = wrap(mssqlProvider.getCategoryNameList);

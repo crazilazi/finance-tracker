@@ -1,7 +1,8 @@
 import { getSessionUser } from '../../../lib/auth';
 import * as dbProvider from '../../../lib/db/dbProvider';
 import { dbConfig } from '../../../lib/db/config';
-import { resolveMode, withDefaults, publicSettings } from '../../../lib/privacy';
+import { withDefaults, publicSettings } from '../../../lib/privacy';
+import { resolveMode } from '../../../lib/unlockGrants';
 
 /**
  * Session probe. Also returns the user's settings and the privacy mode this
@@ -22,7 +23,7 @@ export default async function handler(req, res) {
     console.error('[GET /api/auth/me] settings unavailable, using defaults:', err.message);
     settings = withDefaults(null);
   }
-  const resolved = resolveMode(req, user.user_id, settings);
+  const resolved = await resolveMode(req, user.user_id, settings);
   res.setHeader('X-Privacy-Mode', resolved.mode);
 
   res.status(200).json({

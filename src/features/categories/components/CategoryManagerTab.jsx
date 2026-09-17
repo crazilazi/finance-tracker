@@ -212,7 +212,7 @@ export default function CategoryManagerTab() {
         <Alert
           type="warning"
           showIcon
-          message={`${duplicateGroups.length} possible duplicate ${duplicateGroups.length === 1 ? 'group' : 'groups'}`}
+          title={`${duplicateGroups.length} possible duplicate ${duplicateGroups.length === 1 ? 'group' : 'groups'}`}
           description={
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {duplicateGroups.map((g, i) => (

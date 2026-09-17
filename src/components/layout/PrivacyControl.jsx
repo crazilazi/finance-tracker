@@ -11,7 +11,7 @@ import { setUnlockPromptOpen } from '../../features/expenses/expensesSlice';
 export default function PrivacyControl({ compact = false, muted = '#9ca3af' }) {
   const dispatch = useDispatch();
   const privacy = useSelector(s => s.expenses.privacy);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!privacy.unlocked) return undefined;

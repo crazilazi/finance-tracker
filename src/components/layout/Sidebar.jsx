@@ -156,7 +156,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen, palette }) {
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
         closable={false}
-        width="min(280px, 85vw)"
+        size="min(280px, 85vw)"
         className="sidebar-mobile-drawer"
         styles={{
           body: { padding: 0, background: c.BG_CARD },

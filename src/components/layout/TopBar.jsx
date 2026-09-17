@@ -233,7 +233,7 @@ export default function TopBar({ setMobileOpen, palette }) {
             onChange={(checked) => dispatch(setTheme(checked ? 'dark' : 'light'))}
             checkedChildren={<MoonOutlined />}
             unCheckedChildren={<SunOutlined />}
-            size={isSmall ? 'small' : 'default'}
+            size={isSmall ? 'small' : 'medium'}
             style={{ flexShrink: 0 }}
           />
 
@@ -285,7 +285,7 @@ export default function TopBar({ setMobileOpen, palette }) {
         placement="right"
         onClose={() => setDrawerVisible(false)}
         open={drawerVisible}
-        width="min(360px, 100vw)"
+        size="min(360px, 100vw)"
         styles={{ body: { padding: 16, background: c.BG_CARD }, header: { background: c.BG_CARD, borderBottom: `1px solid ${c.BORDER}` } }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

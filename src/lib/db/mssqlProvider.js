@@ -10,10 +10,19 @@ import { detectYearlyItems, nextDueDate, daysUntil } from '../../utils/cadence';
 
 let poolPromise = null;
 
+const POOL_OPTIONS = {
+  max: 10,
+  min: 1, // Keep a minimum of 1 connection alive to prevent cold starts
+  idleTimeoutMillis: 30000,
+};
+
 async function initPool(config) {
   let pool;
   if (config.connectionString) {
-    pool = await mssql.connect(config.connectionString);
+    // Parse the ADO-style string ourselves so the pool options are applied;
+    // mssql.connect(string) would otherwise fall back to the driver defaults.
+    const parsed = mssql.ConnectionPool.parseConnectionString(config.connectionString);
+    pool = await mssql.connect({ ...parsed, pool: { ...(parsed.pool || {}), ...POOL_OPTIONS } });
   } else {
     let srv = config.server || 'localhost';
     let port = 1433;
@@ -40,11 +49,7 @@ async function initPool(config) {
         encrypt: srv.includes('database.windows.net'),
         trustServerCertificate: String(config.trustServerCertificate) === 'true',
       },
-      pool: {
-        max: 10,
-        min: 1, // Keep a minimum of 1 connection alive to prevent cold starts
-        idleTimeoutMillis: 30000
-      }
+      pool: POOL_OPTIONS,
     };
 
     pool = await mssql.connect(sqlConfig);
@@ -172,22 +177,6 @@ const EXPENSE_FROM = `
     JOIN Types t ON e.type_id = t.id`;
 
 // ---- Reads ------------------------------------------------------------------
-
-export async function getExpenses(config, userId) {
-  const pool = await getPool(config);
-  const request = pool.request();
-  request.input('userId', mssql.UniqueIdentifier, userId);
-  const result = await request.query(`
-    SELECT e.id as uuid, e.month, c.name as category, e.amount, t.name as type, e.notes as tags, e.sheet, u.username, e.category_id, e.type_id
-    FROM Expenses e
-    JOIN Categories c ON e.category_id = c.id
-    JOIN Types t ON e.type_id = t.id
-    JOIN Users u ON e.user_id = u.id
-    WHERE e.user_id = @userId
-    ORDER BY e.month ASC
-  `);
-  return result.recordset;
-}
 
 /**
  * Paginated expense fetch with server-side filtering, sorting, and pagination.
@@ -504,8 +493,12 @@ async function resolveRelations(executor, categoryName, typeName, userId) {
   return { typeId, catId };
 }
 
-/** Insert or overwrite the single expense row for (month, category, user). */
-async function upsertByMonthCategory(executor, item, typeId, catId, userId) {
+/**
+ * Insert or overwrite the single expense row for (month, category, user).
+ * With insertOnly, an existing row is left untouched and null is returned so
+ * a locked (hidden-mode) tab can add entries without ever changing stored amounts.
+ */
+async function upsertByMonthCategory(executor, item, typeId, catId, userId, { insertOnly = false } = {}) {
   const id = item.uuid || crypto.randomUUID();
   const req = new mssql.Request(executor);
   req.input('id', mssql.UniqueIdentifier, id);
@@ -516,6 +509,7 @@ async function upsertByMonthCategory(executor, item, typeId, catId, userId) {
   req.input('notes', mssql.NVarChar(500), item.tags || null);
   req.input('sheet', mssql.NVarChar(100), item.sheet || null);
   req.input('userId', mssql.UniqueIdentifier, userId);
+  req.input('insertOnly', mssql.Bit, insertOnly ? 1 : 0);
 
   const res = await req.query(`
     DECLARE @existingId UNIQUEIDENTIFIER;
@@ -523,20 +517,23 @@ async function upsertByMonthCategory(executor, item, typeId, catId, userId) {
 
     IF @existingId IS NOT NULL
     BEGIN
-      UPDATE Expenses
-      SET amount = @amount, type_id = @tid, notes = @notes, sheet = @sheet
-      WHERE id = @existingId;
-      SELECT @existingId AS finalUuid;
+      IF @insertOnly = 0
+        UPDATE Expenses
+        SET amount = @amount, type_id = @tid, notes = @notes, sheet = @sheet
+        WHERE id = @existingId;
+      SELECT @existingId AS finalUuid, CAST(1 AS BIT) AS existed;
     END
     ELSE
     BEGIN
       INSERT INTO Expenses (id, month, category_id, amount, type_id, notes, sheet, user_id)
       VALUES (@id, @month, @cid, @amount, @tid, @notes, @sheet, @userId);
-      SELECT @id AS finalUuid;
+      SELECT @id AS finalUuid, CAST(0 AS BIT) AS existed;
     END
   `);
 
-  return res.recordset[0]?.finalUuid || id;
+  const row = res.recordset[0];
+  if (insertOnly && row?.existed) return null;
+  return row?.finalUuid || id;
 }
 
 async function updateOwnedExpense(executor, uuid, item, typeId, catId, userId) {
@@ -573,12 +570,19 @@ async function withTransaction(pool, work) {
 
 // ---- Expense mutations -----------------------------------------------------
 
-export async function createExpense(config, item, userId) {
+/**
+ * opts.insertOnly: refuse (409) instead of overwriting when (month, category)
+ * already has a row. Used while the tab is locked.
+ */
+export async function createExpense(config, item, userId, { insertOnly = false } = {}) {
   const pool = await getPool(config);
   const finalUuid = await withTransaction(pool, async (tx) => {
     const { typeId, catId } = await resolveRelations(tx, item.category, item.type, userId);
-    return upsertByMonthCategory(tx, item, typeId, catId, userId);
+    return upsertByMonthCategory(tx, item, typeId, catId, userId, { insertOnly });
   });
+  if (finalUuid === null) {
+    throw httpError(409, `${item.category} is already recorded for ${item.month}. Unlock to change the existing entry.`);
+  }
   return { success: true, data: { ...item, uuid: finalUuid } };
 }
 
@@ -605,25 +609,28 @@ export async function deleteExpense(config, uuid, userId) {
  * Bulk upsert used by the statement reconciler and fill-month.
  * Items carrying a uuid update that row when the caller owns it; everything
  * else is merged by (month, category) exactly like createExpense.
+ * opts.insertOnly: never touch existing rows; they are counted in `skipped`.
  */
-export async function bulkSyncExpenses(config, items, userId) {
+export async function bulkSyncExpenses(config, items, userId, { insertOnly = false } = {}) {
   const pool = await getPool(config);
   let updated = 0;
   let merged = 0;
+  let skipped = 0;
 
   await withTransaction(pool, async (tx) => {
     for (const item of items) {
       const { typeId, catId } = await resolveRelations(tx, item.category, item.type, userId);
-      if (item.uuid) {
+      if (item.uuid && !insertOnly) {
         const ok = await updateOwnedExpense(tx, item.uuid, item, typeId, catId, userId);
         if (ok) { updated++; continue; }
       }
-      await upsertByMonthCategory(tx, { ...item, uuid: undefined }, typeId, catId, userId);
-      merged++;
+      const result = await upsertByMonthCategory(tx, { ...item, uuid: undefined }, typeId, catId, userId, { insertOnly });
+      if (result === null) skipped++;
+      else merged++;
     }
   });
 
-  return { success: true, updated, merged };
+  return { success: true, updated, merged, skipped };
 }
 
 // ---- Users -----------------------------------------------------------------
@@ -697,6 +704,29 @@ export async function getUserSettings(config, userId) {
   const res = await req.query('SELECT settings FROM UserSettings WHERE user_id = @userId');
   if (!res.recordset[0]) return null;
   try { return JSON.parse(res.recordset[0].settings); } catch { return null; }
+}
+
+// ---- Unlock-grant revocation (see src/lib/unlockGrants.js) --------------------
+
+export async function isUnlockGrantRevoked(config, jti) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('jti', mssql.UniqueIdentifier, jti);
+  const res = await req.query('SELECT 1 AS revoked FROM RevokedUnlockGrants WHERE jti = @jti AND expires_at > GETUTCDATE()');
+  return res.recordset.length > 0;
+}
+
+export async function revokeUnlockGrant(config, { jti, userId, expiresAt }) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('jti', mssql.UniqueIdentifier, jti);
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  req.input('expiresAt', mssql.DateTime, expiresAt);
+  await req.query(`
+    IF NOT EXISTS (SELECT 1 FROM RevokedUnlockGrants WHERE jti = @jti)
+      INSERT INTO RevokedUnlockGrants (jti, user_id, expires_at) VALUES (@jti, @userId, @expiresAt);
+    DELETE FROM RevokedUnlockGrants WHERE expires_at < GETUTCDATE();
+  `);
 }
 
 export async function saveUserSettings(config, userId, settings) {
