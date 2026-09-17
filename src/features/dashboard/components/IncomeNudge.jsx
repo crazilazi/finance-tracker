@@ -19,7 +19,7 @@ export default function IncomeNudge() {
     <Alert
       type="info"
       showIcon
-      message="Add your monthly income to unlock real savings-rate and available-funds numbers"
+      title="Add your monthly income to unlock real savings-rate and available-funds numbers"
       description="Right now the dashboard treats each month's total outflow as the income baseline. Record your salary once as an Income entry and mark it recurring; the monthly checklist will propose it from then on."
       action={
         <Button type="primary" size="small" disabled={!can}

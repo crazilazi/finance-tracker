@@ -164,7 +164,7 @@ export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate 
         {/* 1. Missing Months Alert / Banner */}
         {missingMonths.length > 0 ? (
           <Alert
-            message={`Completely Missing Months in ${selectedYear}`}
+            title={`Completely Missing Months in ${selectedYear}`}
             description={
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
                 {missingMonths.map(m => {
@@ -184,7 +184,7 @@ export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate 
           />
         ) : (
           <Alert
-            message={`All 12 Months Recorded for ${selectedYear}`}
+            title={`All 12 Months Recorded for ${selectedYear}`}
             description="You have active financial entries recorded across all calendar months for this year."
             type="success"
             showIcon

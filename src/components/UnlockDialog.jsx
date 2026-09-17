@@ -51,7 +51,7 @@ export default function UnlockDialog() {
       {disabled && (
         <Alert
           type="warning" showIcon style={{ marginTop: 8 }}
-          message="Unlocking is turned off in your settings."
+          title="Unlocking is turned off in your settings."
           action={<Button size="small" onClick={() => { close(); dispatch(setCurrentPage('settings')); }}>Settings</Button>}
         />
       )}

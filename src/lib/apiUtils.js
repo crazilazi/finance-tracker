@@ -1,7 +1,8 @@
 import { getSessionUser } from './auth';
 import * as dbProvider from './db/dbProvider';
 import { dbConfig } from './db/config';
-import { resolveMode, withDefaults, isWriteAllowed } from './privacy';
+import { withDefaults, isWriteAllowed } from './privacy';
+import { resolveMode } from './unlockGrants';
 
 /**
  * Log the real error server-side and return a generic message to the client.
@@ -42,7 +43,7 @@ export async function requireContext(req, res) {
   if (!user) return null;
   try {
     const settings = withDefaults(await dbProvider.getUserSettings(dbConfig, user.user_id));
-    const resolved = resolveMode(req, user.user_id, settings);
+    const resolved = await resolveMode(req, user.user_id, settings);
     const privacy = {
       ...resolved,
       demoSeed: settings.privacy.demoSeed,
@@ -50,7 +51,6 @@ export async function requireContext(req, res) {
       unlockMinutes: settings.privacy.unlockMinutes,
     };
     res.setHeader('X-Privacy-Mode', privacy.mode);
-    res.setHeader('Access-Control-Expose-Headers', 'X-Privacy-Mode');
     return { user, settings, privacy };
   } catch (err) {
     sendServerError(res, err, 'requireContext');

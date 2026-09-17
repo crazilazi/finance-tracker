@@ -58,7 +58,7 @@ export default function SettingsTab() {
       {!can.settings && (
         <Alert
           type="info" showIcon icon={<LockOutlined />}
-          message="Unlock to change privacy settings"
+          title="Unlock to change privacy settings"
           description="Settings can only be changed while real data is unlocked in this tab, so a passer-by cannot switch the app to show your real numbers."
           action={<Button size="small" type="primary" onClick={() => dispatch(setUnlockPromptOpen(true))}>Unlock</Button>}
         />

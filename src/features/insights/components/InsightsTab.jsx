@@ -13,18 +13,26 @@ import {
 } from '@ant-design/icons';
 import { getMonthlyTotals, getCategoryTotals, mean, stdDev } from '../../../utils/financeEngine';
 import BoldText from '../../../components/ui/BoldText';
+import { apiFetch } from '../../../lib/apiClient';
 
 export default function InsightsTab() {
-  const [rawData, setRawData] = useState(null);
+  // { mode, rows }: rows fetched for a given privacy mode. A result for a
+  // different mode is stale and shows the spinner until the refetch lands.
+  const [loaded, setLoaded] = useState(null);
   const hideAmounts = useSelector(state => state.expenses.hideAmounts);
+  const privacyMode = useSelector(state => state.expenses.privacy.mode);
 
   useEffect(() => {
-    // export=true returns the full dataset (pageSize is capped at 500 by the API)
-    fetch('/api/expenses?export=true', { credentials: 'same-origin' })
-      .then(r => r.json())
-      .then(result => setRawData(result.data || []))
-      .catch(() => setRawData([]));
-  }, []);
+    // Full dataset in the current privacy mode. apiFetch attaches the unlock
+    // grant, so an unlocked tab computes on real rows; re-run on lock/unlock.
+    let cancelled = false;
+    apiFetch('/api/expenses?export=true')
+      .then(({ body }) => { if (!cancelled) setLoaded({ mode: privacyMode, rows: body?.data || [] }); })
+      .catch(() => { if (!cancelled) setLoaded({ mode: privacyMode, rows: [] }); });
+    return () => { cancelled = true; };
+  }, [privacyMode]);
+
+  const rawData = loaded && loaded.mode === privacyMode ? loaded.rows : null;
 
   if (rawData === null) {
     return <div className="text-center text-gray-400 py-20"><Spin size="large" /> <p className="mt-4">Crunching numbers for insights...</p></div>;
@@ -36,7 +44,7 @@ export default function InsightsTab() {
 
   const months = [...new Set(rawData.map(d => d.month))].sort();
   const monthlyTotals = getMonthlyTotals(rawData);
-  const totalSpend = rawData.reduce((sum, d) => sum + d.amount, 0);
+  const totalSpend = rawData.reduce((sum, d) => sum + (d.amount || 0), 0);
 
   // 1. Top Category
   const catTotals = getCategoryTotals(rawData);

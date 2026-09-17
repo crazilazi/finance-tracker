@@ -29,32 +29,9 @@ import {
   tableRequestParams,
 } from './expensesSlice';
 import { getUnlockToken, setUnlockToken, clearUnlockToken } from '../../lib/unlockStorage';
+import { apiFetch } from '../../lib/apiClient';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * fetch() wrapper: JSON in/out, attaches the unlock grant, surfaces the
- * server's X-Privacy-Mode, 401 → logout, non-2xx → Error with server message.
- * Resolves to { body, mode }.
- */
-async function apiFetch(url, options = {}) {
-  const token = getUnlockToken();
-  const res = await fetch(url, {
-    credentials: 'same-origin',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'X-Unlock': token } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  let body = null;
-  try { body = await res.json(); } catch { /* empty body */ }
-  const mode = res.headers.get('X-Privacy-Mode') || null;
-  if (res.status === 401) { const e = new Error(body?.error || '401'); e.status = 401; e.auth = url.startsWith('/api/privacy') ; throw e; }
-  if (!res.ok) { const e = new Error(body?.error || `Request failed (${res.status})`); e.status = res.status; e.mode = mode; throw e; }
-  return { body, mode };
-}
 
 function failure(err) {
   if (err && err.status === 401 && !err.auth) return of(logoutUser());
@@ -289,10 +266,15 @@ export const fillMonthEpic = (action$) =>
     mergeMap(action => {
       const { month, items } = action.payload;
       return from(apiFetch('/api/expenses/fill-month', { method: 'POST', body: JSON.stringify({ month, items }) })).pipe(
-        mergeMap(() => of(
-          setLastNotice(items.length === 1 ? `Added ${items[0].category}` : `Added ${items.length} entries for ${month}`),
-          ...refreshAll()
-        )),
+        mergeMap(({ body }) => {
+          const skipped = body?.skipped || 0;
+          const added = items.length - skipped;
+          const base = added === 0
+            ? 'Nothing added'
+            : added === 1 && items.length === 1 ? `Added ${items[0].category}` : `Added ${added} entries for ${month}`;
+          const suffix = skipped > 0 ? ` · ${skipped} already recorded (unlock to change)` : '';
+          return of(setLastNotice(base + suffix), ...refreshAll());
+        }),
         catchError(failure)
       );
     })
@@ -524,12 +506,22 @@ export const checkAuthSessionEpic = (action$) =>
     )
   );
 
+/** Belt and braces: the service worker never caches /api/*, but drop every cache on logout anyway. */
+async function clearServiceWorkerCaches() {
+  try {
+    if (typeof caches === 'undefined') return;
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+  } catch { /* unsupported or blocked storage */ }
+}
+
 export const logoutEpic = (action$) =>
   action$.pipe(
     ofType('expenses/logout'),
     mergeMap(() => {
       clearUnlockToken();
-      return from(fetch('/api/auth/logout', { method: 'POST' }).then(res => res.json())).pipe(
+      const logout = fetch('/api/auth/logout', { method: 'POST' }).then(res => res.json());
+      return from(Promise.all([logout, clearServiceWorkerCaches()])).pipe(
         map(() => logoutUser()),
         catchError(() => of(logoutUser()))
       );

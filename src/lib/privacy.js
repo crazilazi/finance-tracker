@@ -9,7 +9,8 @@ import crypto from 'crypto';
  *   demo    deterministic fake amounts seeded per user
  *   real    actual data
  * Real data is only returned while a short-lived, server-issued unlock grant
- * (X-Unlock header) is present and valid for this user.
+ * (X-Unlock header) is present, valid for this user and not revoked
+ * (see ./unlockGrants.js).
  */
 
 export const MODES = ['hidden', 'demo', 'real'];
@@ -35,19 +36,16 @@ export function publicSettings(settings) {
 }
 
 // ---- Unlock grants ---------------------------------------------------------
+//
+// Pure token helpers. Revocation (DB-backed) and per-request mode resolution
+// live in ./unlockGrants.js so this module stays free of database imports.
 
 const UNLOCK_PURPOSE = 'unlock';
-const revoked = new Map(); // jti -> exp (ms). Per-instance; grants are short-lived anyway.
 
 function secret() {
   const s = process.env.JWT_SECRET;
   if (!s) throw new Error('JWT_SECRET is not configured.');
   return s;
-}
-
-function sweepRevoked() {
-  const now = Date.now();
-  for (const [jti, exp] of revoked) if (exp < now) revoked.delete(jti);
 }
 
 export function issueUnlockToken(userId, minutes) {
@@ -58,26 +56,21 @@ export function issueUnlockToken(userId, minutes) {
   return { token, expiresAt: exp * 1000, jti };
 }
 
-/** Returns the decoded grant when the header carries a valid token for this user, else null. */
-export function verifyUnlockToken(token, userId) {
+/**
+ * Signature / expiry / audience check only. Returns the decoded grant or null.
+ * Callers that need revocation awareness use verifyUnlockGrant in ./unlockGrants.js.
+ */
+export function decodeUnlockToken(token, userId) {
   if (!token || typeof token !== 'string') return null;
   try {
     const payload = jwt.verify(token, secret());
     if (payload.purpose !== UNLOCK_PURPOSE) return null;
     if (String(payload.sub).toLowerCase() !== String(userId).toLowerCase()) return null;
-    sweepRevoked();
-    if (payload.jti && revoked.has(payload.jti)) return null;
+    if (!payload.jti || !payload.exp) return null;
     return payload;
   } catch {
     return null;
   }
-}
-
-export function revokeUnlockToken(token) {
-  try {
-    const payload = jwt.decode(token);
-    if (payload?.jti && payload?.exp) revoked.set(payload.jti, payload.exp * 1000);
-  } catch { /* ignore */ }
 }
 
 export function readUnlockHeader(req) {
@@ -85,13 +78,10 @@ export function readUnlockHeader(req) {
   return Array.isArray(h) ? h[0] : h || null;
 }
 
-/** Effective mode for a request given the user's settings. */
-export function resolveMode(req, userId, settings) {
+/** Default mode from settings, ignoring any unlock grant. */
+export function defaultModeOf(settings) {
   const s = withDefaults(settings);
-  const grant = verifyUnlockToken(readUnlockHeader(req), userId);
-  if (grant) return { mode: 'real', unlocked: true, unlockExpiresAt: grant.exp * 1000 };
-  const mode = MODES.includes(s.privacy.defaultMode) ? s.privacy.defaultMode : 'hidden';
-  return { mode, unlocked: false, unlockExpiresAt: null };
+  return MODES.includes(s.privacy.defaultMode) ? s.privacy.defaultMode : 'hidden';
 }
 
 // ---- Write gating -----------------------------------------------------------

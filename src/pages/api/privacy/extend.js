@@ -1,7 +1,8 @@
 import * as dbProvider from '../../../lib/db/dbProvider';
 import { dbConfig } from '../../../lib/db/config';
 import { requireUser, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
-import { withDefaults, verifyUnlockToken, issueUnlockToken, revokeUnlockToken, readUnlockHeader } from '../../../lib/privacy';
+import { withDefaults, issueUnlockToken } from '../../../lib/privacy';
+import { verifyUnlockGrant, revokeUnlockGrant } from '../../../lib/unlockGrants';
 
 /**
  * POST /api/privacy/extend
@@ -13,8 +14,7 @@ export default async function handler(req, res) {
   const user = requireUser(req, res);
   if (!user) return;
 
-  const current = readUnlockHeader(req);
-  if (!verifyUnlockToken(current, user.user_id)) {
+  if (!(await verifyUnlockGrant(req, user.user_id))) {
     res.status(401).json({ error: 'Unlock has expired. Unlock again.' });
     return;
   }
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   try {
     const settings = withDefaults(await dbProvider.getUserSettings(dbConfig, user.user_id));
     const grant = issueUnlockToken(user.user_id, settings.privacy.unlockMinutes || 15);
-    revokeUnlockToken(current);
+    await revokeUnlockGrant(req, user.user_id);
     res.status(200).json({ token: grant.token, expiresAt: grant.expiresAt, mode: 'real' });
   } catch (err) {
     sendServerError(res, err, 'POST /api/privacy/extend');

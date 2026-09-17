@@ -1,4 +1,4 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, createSelector } from '@reduxjs/toolkit';
 
 function currentMonth() {
   const now = new Date();
@@ -301,10 +301,14 @@ export const {
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 
+// These selectors build new objects, so they are memoised with createSelector:
+// useSelector compares by reference and would otherwise re-render every
+// subscriber on every store update (react-redux warns about this in dev).
+
 /** What the current privacy mode permits. Mirrors the server's write matrix. */
-export function selectCan(state) {
-  const mode = state.expenses.privacy.mode;
-  return {
+export const selectCan = createSelector(
+  [(state) => state.expenses.privacy.mode],
+  (mode) => ({
     mode,
     real: mode === 'real',
     edit: mode === 'real',            // update / delete / bulk sync / undo
@@ -312,27 +316,36 @@ export function selectCan(state) {
     config: mode !== 'demo',          // categories, goals, loans
     settings: mode === 'real',
     export: mode === 'real',
-  };
-}
+  })
+);
 
 // ── Derived request parameters ───────────────────────────────────────────────
 
-export function effectiveTableFilter(state) {
-  const { filter, tableFilters } = state.expenses;
-  const year = tableFilters.year && tableFilters.year !== 'all' ? tableFilters.year : null;
-  const month = tableFilters.month && tableFilters.month !== 'all' ? tableFilters.month : null;
-  if (year && month) return { filter: `${year}-${month}`, monthNum: '' };
-  if (year) return { filter: year, monthNum: '' };
-  if (month) return { filter, monthNum: month };
-  return { filter, monthNum: '' };
-}
+export const effectiveTableFilter = createSelector(
+  [(state) => state.expenses.filter, (state) => state.expenses.tableFilters.year, (state) => state.expenses.tableFilters.month],
+  (filter, yearRaw, monthRaw) => {
+    const year = yearRaw && yearRaw !== 'all' ? yearRaw : null;
+    const month = monthRaw && monthRaw !== 'all' ? monthRaw : null;
+    if (year && month) return { filter: `${year}-${month}`, monthNum: '' };
+    if (year) return { filter: year, monthNum: '' };
+    if (month) return { filter, monthNum: month };
+    return { filter, monthNum: '' };
+  }
+);
 
-export function tableRequestParams(state) {
-  const { query, sortCol, sortDir, tableFilters } = state.expenses;
-  const { type, category, search } = tableFilters;
-  const { filter, monthNum } = effectiveTableFilter(state);
-  return { filter, query, sortCol, sortDir, type, category, search, monthNum };
-}
+export const tableRequestParams = createSelector(
+  [
+    (state) => state.expenses.query,
+    (state) => state.expenses.sortCol,
+    (state) => state.expenses.sortDir,
+    (state) => state.expenses.tableFilters,
+    effectiveTableFilter,
+  ],
+  (query, sortCol, sortDir, tableFilters, { filter, monthNum }) => {
+    const { type, category, search } = tableFilters;
+    return { filter, query, sortCol, sortDir, type, category, search, monthNum };
+  }
+);
 
 // ── Cache key helpers ─────────────────────────────────────────────────────────
 export function makeTableCacheKey(state) {

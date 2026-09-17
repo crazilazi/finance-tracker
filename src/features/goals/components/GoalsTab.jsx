@@ -58,7 +58,7 @@ export default function GoalsTab() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <div className="text-lg font-bold"><FlagOutlined /> Savings goals</div>
-            <div className="text-xs text-gray-400">Progress comes from the linked category's recorded amounts; projections use your last six months' average contribution.</div>
+            <div className="text-xs text-gray-400">Progress comes from the linked category&apos;s recorded amounts; projections use your last six months&apos; average contribution.</div>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>New goal</Button>
         </div>
