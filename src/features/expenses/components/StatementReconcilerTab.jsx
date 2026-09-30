@@ -31,6 +31,8 @@ export default function StatementReconcilerTab() {
   const [ledger, setLedger] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
   const [loading, setLoading] = useState(false);
+  // Statement rows that match a recorded entry exactly prove it was paid
+  const [markMatchedPaid, setMarkMatchedPaid] = useState(true);
 
   /** All ledger rows for the given years, with real amounts, or null when this tab is not unlocked. */
   const loadLedger = async (years) => {
@@ -75,15 +77,25 @@ export default function StatementReconcilerTab() {
   const handleSync = () => {
     if (!can.edit) { dispatch(setUnlockPromptOpen(true)); return; }
     const activeItems = items.filter(item => item.checked);
-    if (activeItems.length === 0) {
+    const toMarkPaid = markMatchedPaid ? matchedPending : [];
+    if (activeItems.length === 0 && toMarkPaid.length === 0) {
       message.error('Please select at least one transaction to sync!');
       return;
     }
     const problem = syncProblem(activeItems);
     if (problem) { message.error(problem); return; }
 
-    // Rows sharing a month, category and type are added together and saved once
-    dispatch({ type: 'expenses/bulkSync', payload: buildSyncPayload(activeItems) });
+    // Rows sharing a month, category and type are added together and saved once, as paid
+    if (activeItems.length > 0) dispatch({ type: 'expenses/bulkSync', payload: buildSyncPayload(activeItems) });
+    if (toMarkPaid.length > 0) {
+      dispatch({
+        type: 'expenses/setPaid',
+        payload: {
+          items: toMarkPaid.map(r => ({ uuid: r.existingItem.uuid, paid: true })),
+          notice: `Marked ${toMarkPaid.length} matched ${toMarkPaid.length === 1 ? 'entry' : 'entries'} as paid`,
+        },
+      });
+    }
     setItems([]);
     setLedger([]);
   };
@@ -114,6 +126,9 @@ export default function StatementReconcilerTab() {
     if (activeFilter === 'synced') return item.status === 'synced';
     return true;
   });
+
+  // Unticked rows that match a recorded entry which is still pending
+  const matchedPending = rowsWithStatus.filter(r => r.status === 'synced' && !r.checked && r.existingItem?.uuid && !r.existingItem.paid);
 
   const newCount = rowsWithStatus.filter(i => i.status === 'new').length;
   const mismatchCount = rowsWithStatus.filter(i => i.status === 'mismatch').length;
@@ -331,9 +346,15 @@ export default function StatementReconcilerTab() {
                   <Radio.Button value="synced">⚪ {isMobile ? '' : 'Ignored '}({syncedCount})</Radio.Button>
                 </Radio.Group>
 
-                {!isMobile && (
+                {matchedPending.length > 0 ? (
+                  <Checkbox checked={markMatchedPaid} onChange={e => setMarkMatchedPaid(e.target.checked)}>
+                    <span style={{ color: c.TEXT_MUTED }}>
+                      Also mark {matchedPending.length} matched {matchedPending.length === 1 ? 'entry' : 'entries'} as paid
+                    </span>
+                  </Checkbox>
+                ) : !isMobile && (
                   <Text style={{ color: c.TEXT_MUTED }}>
-                    Review and edit items inline before committing.
+                    Review and edit items inline before committing. Synced rows are saved as paid.
                   </Text>
                 )}
               </div>

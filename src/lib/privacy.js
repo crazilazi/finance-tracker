@@ -97,13 +97,14 @@ export function defaultModeOf(settings) {
 // op: 'create'   new expense / fill-month with typed amounts   → blocked only in demo
 //     'edit'     update/delete/bulk sync/undo                  → needs real
 //     'config'   categories, loans, goals                      → blocked only in demo
+//     'status'   mark rows paid / pending (reveals no amount)  → blocked only in demo
 //     'settings' privacy settings / PIN                        → needs real
 
 export function isWriteAllowed(mode, op) {
   if (mode === 'real') return true;
   if (mode === 'demo') return false;
   // hidden
-  return op === 'create' || op === 'config';
+  return op === 'create' || op === 'config' || op === 'status';
 }
 
 // ---- PIN ---------------------------------------------------------------------

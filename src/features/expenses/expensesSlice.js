@@ -214,6 +214,26 @@ const expensesSlice = createSlice({
       state.undoStack.pop();
     },
 
+    // ── Paid state (optimistic; the server response and refetch confirm it) ──
+    applyPaidLocally(state, action) {
+      const byId = new Map((action.payload || []).map(i => [String(i.uuid).toLowerCase(), i]));
+      const stamp = new Date().toISOString();
+      const apply = (row) => {
+        const it = row && row.uuid ? byId.get(String(row.uuid).toLowerCase()) : null;
+        if (!it) return;
+        row.paid = it.paid;
+        row.paidAt = it.paid ? (it.paidAt || row.paidAt || stamp) : null;
+      };
+      state.tableData.forEach(apply);
+      if (state.summary) {
+        state.summary.items.forEach(apply);
+        state.summary.extras.forEach(apply);
+      }
+      if (state.reminders?.unpaid) {
+        state.reminders.unpaid = state.reminders.unpaid.filter(u => !byId.get(String(u.uuid).toLowerCase())?.paid);
+      }
+    },
+
     // ── Feedback ──────────────────────────────────────────────
     setLastError(state, action) {
       state.lastError = action.payload ? { text: action.payload, at: Date.now() } : null;
@@ -292,6 +312,7 @@ export const {
   invalidateCache,
   pushUndoEntry,
   popUndoEntry,
+  applyPaidLocally,
   setLastError,
   setLastNotice,
   setTheme,
@@ -321,6 +342,7 @@ export const selectCan = createSelector(
     edit: mode === 'real',            // update / delete / bulk sync / undo
     create: mode !== 'demo',          // new expense with a typed amount, fill-month
     config: mode !== 'demo',          // categories, goals, loans
+    status: mode !== 'demo',          // mark paid / pending (reveals no amount)
     settings: mode === 'real',
     export: mode === 'real',
   })

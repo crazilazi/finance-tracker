@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Modal, Form, Input, DatePicker, InputNumber, Select, Tag, Button, Alert, Row, Col, Checkbox, AutoComplete } from 'antd';
+import { Modal, Form, Input, DatePicker, InputNumber, Select, Tag, Button, Alert, Row, Col, Checkbox, AutoComplete, Switch } from 'antd';
 import { ThunderboltOutlined, CheckCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { parseNLPInput, guessType } from '../../../utils/nlpParser';
+import { defaultPaidForMonth, labelsFor } from '../../../utils/paidLabel';
 
 const { Option } = Select;
 
@@ -20,6 +21,8 @@ export default function ExpenseModal({ open, onClose, editRecord, preset = null 
   const categoryObjects = useSelector(state => state.expenses.categories);
   const [form] = Form.useForm();
   const selectedMonth = Form.useWatch('month', form);
+  const selectedType = Form.useWatch('type', form);
+  const propagateYearly = Form.useWatch('propagateYearly', form);
   const [isRangeMode, setIsRangeMode] = useState(false);
 
   const [nlpText, setNlpText] = useState('');
@@ -42,7 +45,8 @@ export default function ExpenseModal({ open, onClose, editRecord, preset = null 
           category: editRecord.category,
           type: editRecord.type,
           tags: editRecord.tags || '',
-          propagateYearly: false
+          propagateYearly: false,
+          paid: !!editRecord.paid,
         });
       } else {
         // Create Mode
@@ -54,13 +58,21 @@ export default function ExpenseModal({ open, onClose, editRecord, preset = null 
           category: preset?.category || undefined,
           amount: preset?.amount || undefined,
           tags: '',
-          propagateYearly: false
+          propagateYearly: false,
+          paid: defaultPaidForMonth(dayjs().format('YYYY-MM')),
         });
       }
       setNlpText('');
       setNlpParsed(null);
     }
   }, [open, editRecord, isEdit, form, preset]);
+
+  // New entries: past months default to paid, this month and later to pending,
+  // until the user sets the switch themselves (edits keep the row's state)
+  useEffect(() => {
+    if (!open || isEdit || !selectedMonth || form.isFieldTouched('paid')) return;
+    form.setFieldsValue({ paid: defaultPaidForMonth(selectedMonth.format('YYYY-MM')) });
+  }, [open, isEdit, selectedMonth, form]);
 
   // NLP Parser trigger
   useEffect(() => {
@@ -173,7 +185,8 @@ export default function ExpenseModal({ open, onClose, editRecord, preset = null 
         dispatch({ type: 'expenses/createExpense', payload: { ...payload, month } });
       });
     } else if (values.month) {
-      const singlePayload = { ...payload, month: values.month.format('YYYY-MM') };
+      // Range and whole-year entries leave paid to the server's per-month default
+      const singlePayload = { ...payload, month: values.month.format('YYYY-MM'), paid: !!values.paid };
       if (isEdit) {
         dispatch({ type: 'expenses/updateExpense', payload: { uuid: editRecord.uuid, data: singlePayload, oldSnapshot: editRecord } });
       } else {
@@ -338,6 +351,25 @@ export default function ExpenseModal({ open, onClose, editRecord, preset = null 
               </Form.Item>
             </Col>
           </Row>
+
+          {!isRangeMode && !propagateYearly ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <Form.Item name="paid" valuePropName="checked" noStyle>
+                <Switch
+                  checkedChildren={labelsFor(selectedType).done}
+                  unCheckedChildren={labelsFor(selectedType).pending}
+                  aria-label={`${labelsFor(selectedType).done} already`}
+                />
+              </Form.Item>
+              <span className="text-gray-400 text-xs">
+                {selectedType === 'Income' ? 'Already received?' : selectedType === 'Saving' ? 'Already transferred?' : 'Already paid?'}
+              </span>
+            </div>
+          ) : (
+            <div className="text-gray-500 text-xs" style={{ marginBottom: 12 }}>
+              Past months are saved as paid; this month and later as pending. You can change each one afterwards.
+            </div>
+          )}
 
           {!isRangeMode && (
             <Form.Item name="propagateYearly" valuePropName="checked" className="mb-4">

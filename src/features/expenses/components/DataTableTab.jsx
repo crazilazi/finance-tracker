@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Card, Table, Input, InputNumber, Select, AutoComplete, Button, Popconfirm, Tag, App, Tooltip } from 'antd';
-import { SearchOutlined, EditOutlined, DeleteOutlined, UndoOutlined, CopyOutlined, ExportOutlined } from '@ant-design/icons';
+import { SearchOutlined, EditOutlined, DeleteOutlined, UndoOutlined, CopyOutlined, ExportOutlined, CheckOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import {
   setTableFilters,
   setSort,
@@ -14,6 +14,7 @@ import {
 import useViewport from '../../../hooks/useViewport';
 import { exportExpensesToExcel, formatMonthLabel } from '../../../utils/exportExpenses';
 import ThisMonthCard from '../../dashboard/components/ThisMonthCard';
+import PaidTag from '../../../components/ui/PaidTag';
 
 const { Option } = Select;
 const TYPES = ['Expense', 'EMI', 'Saving', 'Income'];
@@ -205,6 +206,21 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
     message.success(`Successfully deleted ${rows.length} selected records!`);
   };
 
+  // Paid state works while amounts are hidden (it reveals none); demo mode opens the unlock prompt
+  const openUnlock = () => dispatch(setUnlockPromptOpen(true));
+  const setPaid = (rows, paid, notice) => {
+    if (!can.status) { openUnlock(); return; }
+    const items = rows.filter(r => !!r.paid !== paid).map(r => ({ uuid: r.uuid, paid }));
+    if (items.length === 0) return;
+    dispatch({ type: 'expenses/setPaid', payload: { items, notice } });
+  };
+  const handleBulkPaid = (paid) => {
+    const rows = selectedRowKeys.map(key => tableData.find(d => d.uuid === key)).filter(Boolean);
+    const changing = rows.filter(r => !!r.paid !== paid).length;
+    setPaid(rows, paid, changing > 0 ? `Marked ${changing} ${changing === 1 ? 'entry' : 'entries'} ${paid ? 'paid' : 'pending'} · Ctrl+Z to undo` : undefined);
+    if (can.status) setSelectedRowKeys([]);
+  };
+
   const handleExport = async () => {
     try {
       message.loading({ content: 'Generating Export...', key: 'exporting' });
@@ -333,6 +349,21 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
         if (isAnomaly) return <Tag color="warning">Warning</Tag>;
         return <Tag color="success">Normal</Tag>;
       }
+    },
+    {
+      title: 'Paid',
+      key: 'paid',
+      width: 120,
+      render: (_, record) => (
+        <PaidTag
+          type={record.type}
+          paid={!!record.paid}
+          paidAt={record.paidAt}
+          onToggle={(paid) => setPaid([record], paid)}
+          locked={!can.status}
+          onLocked={openUnlock}
+        />
+      ),
     },
     {
       title: 'Actions',
@@ -574,6 +605,26 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
                     >
                       Clear
                     </Button>
+                    <Tooltip title="Mark selected as paid (income as received)">
+                      <Button
+                        size="small" icon={<CheckOutlined />}
+                        onClick={() => handleBulkPaid(true)}
+                        aria-label="Mark selected paid"
+                        style={{ borderRadius: 8, height: 30, padding: '0 10px', fontSize: 12, color: '#34d399', borderColor: 'rgba(52,211,153,0.4)', background: 'transparent' }}
+                      >
+                        {!isMobile && 'Paid'}
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title="Mark selected as pending">
+                      <Button
+                        size="small" icon={<ClockCircleOutlined />}
+                        onClick={() => handleBulkPaid(false)}
+                        aria-label="Mark selected pending"
+                        style={{ borderRadius: 8, height: 30, padding: '0 10px', fontSize: 12, color: '#fbbf24', borderColor: 'rgba(251,191,36,0.4)', background: 'transparent' }}
+                      >
+                        {!isMobile && 'Pending'}
+                      </Button>
+                    </Tooltip>
                     <Popconfirm
                       title={`Delete ${selectedRowKeys.length} items?`}
                       description="This action cannot be undone."

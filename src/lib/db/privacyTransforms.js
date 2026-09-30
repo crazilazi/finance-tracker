@@ -72,6 +72,8 @@ export function hideSummary(s) {
     missingSuggestedTotal: null,
     monthTotal: null,
     monthIncome: null,
+    pendingOutflow: null,
+    pendingIncome: null,
   };
 }
 

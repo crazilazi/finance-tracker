@@ -87,7 +87,13 @@ END
 GO
 
 -- 7. Create Trigger for Audits
-CREATE OR ALTER TRIGGER trg_Expenses_Audit
+-- Created only when missing. This file is re-applied on every migration run,
+-- and later migrations (007_paid_status) extend the trigger; CREATE OR ALTER
+-- here would silently revert that. The trigger text is kept inside EXEC so the
+-- IF can guard it (CREATE TRIGGER must otherwise be alone in its batch).
+IF OBJECT_ID('trg_Expenses_Audit', 'TR') IS NULL
+EXEC(N'
+CREATE TRIGGER trg_Expenses_Audit
 ON Expenses
 AFTER INSERT, UPDATE, DELETE
 AS
@@ -98,7 +104,7 @@ BEGIN
     IF EXISTS(SELECT * FROM deleted) AND NOT EXISTS(SELECT * FROM inserted)
     BEGIN
         INSERT INTO Expenses_Audit (audit_action, id, user_id, category_id, type_id, month, amount, notes, sheet)
-        SELECT 'DELETE', id, user_id, category_id, type_id, month, amount, notes, sheet
+        SELECT ''DELETE'', id, user_id, category_id, type_id, month, amount, notes, sheet
         FROM deleted;
     END
 
@@ -106,7 +112,7 @@ BEGIN
     IF EXISTS(SELECT * FROM inserted) AND NOT EXISTS(SELECT * FROM deleted)
     BEGIN
         INSERT INTO Expenses_Audit (audit_action, id, user_id, category_id, type_id, month, amount, notes, sheet)
-        SELECT 'INSERT', id, user_id, category_id, type_id, month, amount, notes, sheet
+        SELECT ''INSERT'', id, user_id, category_id, type_id, month, amount, notes, sheet
         FROM inserted;
     END
 
@@ -114,10 +120,11 @@ BEGIN
     IF EXISTS(SELECT * FROM inserted) AND EXISTS(SELECT * FROM deleted)
     BEGIN
         INSERT INTO Expenses_Audit (audit_action, id, user_id, category_id, type_id, month, amount, notes, sheet)
-        SELECT 'UPDATE', id, user_id, category_id, type_id, month, amount, notes, sheet
+        SELECT ''UPDATE'', id, user_id, category_id, type_id, month, amount, notes, sheet
         FROM inserted;
     END
 END
+');
 GO
 
 

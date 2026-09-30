@@ -44,6 +44,7 @@ export const getMonthSummary = wrap(mssqlProvider.getMonthSummary);
 export const createExpense = wrap(mssqlProvider.createExpense);
 export const updateExpense = wrap(mssqlProvider.updateExpense);
 export const deleteExpense = wrap(mssqlProvider.deleteExpense);
+export const setExpensesPaid = wrap(mssqlProvider.setExpensesPaid);
 export const bulkSyncExpenses = wrap(mssqlProvider.bulkSyncExpenses);
 export const verifyOrCreateUser = wrap(mssqlProvider.verifyOrCreateUser);
 

@@ -63,6 +63,9 @@ export default function App() {
   const privacy     = useSelector(state => state.expenses.privacy);
   const settings    = useSelector(state => state.expenses.settings);
   const can         = useSelector(selectCan);
+  const lastUndo    = useSelector(state => state.expenses.undoStack[state.expenses.undoStack.length - 1]);
+  // Undoing a paid/pending change needs the same rights as making it (allowed while hidden)
+  const canUndo     = lastUndo?.action === 'paid' ? can.status : can.edit;
   const exportParams = useSelector(tableRequestParams);
   const isDark      = themeMode === 'dark';
   const c           = isDark ? DARK : LIGHT;  // active palette
@@ -178,7 +181,7 @@ export default function App() {
     onPalette: () => dispatch(togglePalette()),
     onNew: () => handleAdd(null),
     onSearch: focusSmartFilter,
-    onUndo: () => (can.edit ? dispatch({ type: 'expenses/undoLast' }) : dispatch(setUnlockPromptOpen(true))),
+    onUndo: () => (canUndo ? dispatch({ type: 'expenses/undoLast' }) : dispatch(setUnlockPromptOpen(true))),
     onGoto: (page) => dispatch(setCurrentPage(page)),
   });
 
@@ -209,13 +212,13 @@ export default function App() {
         }),
       },
       { id: 'search', group: 'Actions', label: 'Focus smart filter', hint: '>5000  type:emi  cat:rent  notes:swiggy', icon: '🔎', shortcut: '/', run: focusSmartFilter },
-      { id: 'undo', group: 'Actions', label: 'Undo last change', icon: '↩️', shortcut: 'Ctrl+Z', run: guard(can.edit, () => dispatch({ type: 'expenses/undoLast' })) },
+      { id: 'undo', group: 'Actions', label: 'Undo last change', icon: '↩️', shortcut: 'Ctrl+Z', run: guard(canUndo, () => dispatch({ type: 'expenses/undoLast' })) },
       { id: 'theme', group: 'Preferences', label: `Switch to ${isDark ? 'light' : 'dark'} theme`, icon: isDark ? '☀️' : '🌙', run: () => dispatch(setTheme(isDark ? 'light' : 'dark')) },
       ...PAGES.map(p => ({ id: `go-${p.key}`, group: 'Go to', label: p.label, icon: p.icon, shortcut: p.shortcut, keywords: ['go', 'open', 'tab'], run: () => dispatch(setCurrentPage(p.key)) })),
       { id: 'logout', group: 'Account', label: 'Log out', icon: '🚪', run: () => dispatch({ type: 'expenses/logout' }) },
     ];
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [summary, summaryMonth, isDark, exportParams, privacy.unlocked, privacy.mode, can.create, can.edit, can.export, can.real]);
+  }, [summary, summaryMonth, isDark, exportParams, privacy.unlocked, privacy.mode, can.create, can.edit, can.export, can.real, canUndo]);
 
   const renderActiveTab = () => {
     let TabComponent;

@@ -7,6 +7,7 @@
  *   cat:rent  category:rent  category name contains
  *   notes:swiggy             notes contain
  *   sheet:july               sheet name contains
+ *   status:paid  status:pending (also paid, unpaid)   paid state
  *   anything else            free text matched against category, type, notes and sheet
  */
 
@@ -19,7 +20,10 @@ export const SMART_QUERY_EXAMPLES = [
   { code: 'cat:loan', text: 'category contains "loan"' },
   { code: 'notes:swiggy', text: 'notes contain "swiggy"' },
   { code: 'sheet:july', text: 'sheet name contains "july"' },
+  { code: 'status:pending', text: 'not paid yet (also status:paid, paid, unpaid)' },
 ];
+
+const STATUS_WORDS = { paid: 'paid', pending: 'pending', unpaid: 'pending' };
 
 function scale(numStr, suffix) {
   const n = parseFloat(numStr);
@@ -62,6 +66,7 @@ export function parseSmartQuery(text) {
     category: null,
     notes: null,
     sheet: null,
+    status: null,   // 'paid' | 'pending'
     text: '',
   };
   if (!text) return out;
@@ -97,6 +102,8 @@ export function parseSmartQuery(text) {
     if (token.startsWith('notes:')) { out.notes = token.slice(6); continue; }
     if (token.startsWith('note:')) { out.notes = token.slice(5); continue; }
     if (token.startsWith('sheet:')) { out.sheet = token.slice(6); continue; }
+    if (token.startsWith('status:') && STATUS_WORDS[token.slice(7)]) { out.status = STATUS_WORDS[token.slice(7)]; continue; }
+    if (token === 'paid' || token === 'unpaid') { out.status = STATUS_WORDS[token]; continue; }
     free.push(token);
   }
 
@@ -109,6 +116,6 @@ export function parseSmartQuery(text) {
 export function isEmptySmartQuery(parsed) {
   return !parsed || (
     parsed.amountMin === null && parsed.amountMax === null && parsed.amountEq === null &&
-    !parsed.type && !parsed.category && !parsed.notes && !parsed.sheet && !parsed.text
+    !parsed.type && !parsed.category && !parsed.notes && !parsed.sheet && !parsed.status && !parsed.text
   );
 }

@@ -85,6 +85,26 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 - **Loans**: principal, rate, tenure and start month give outstanding balance, payoff date, interest paid, an amortisation chart, recorded prepayments, a what-if prepayment slider and a "which loan to prepay first" ranking.
 - **Goals**: link a savings target to a category; progress, six-month average contribution, projected completion and the monthly amount needed to hit a target month.
 - **Budgets & Upcoming** on the dashboard: spent vs budget per category with 80%/100% alerts, yearly items detected from your history, credit-card due dates, and an income nudge when no salary has been recorded.
+
+### ✅ 12. Mark as Paid
+Recording an entry and paying it are separate steps. An EMI created at the start of the month shows as **Pending** until you mark it paid, so the dashboard tells you what has actually gone out.
+
+- **One tap, everywhere.** Every recorded entry has a paid / pending tag: in the **This Month** card (pending first, with **Mark all paid** and a "Paid N of M" count), in a **Paid** column in the Data Table (plus bulk **Paid** / **Pending** for selected rows), and in the **Due and unpaid** list on the Upcoming card. **Ctrl+Z** undoes it.
+- **Wording follows the type.**
+
+  | Type | Done | Not yet |
+  |---|---|---|
+  | Expense, EMI | Paid | Pending |
+  | Income | Received | Expected |
+  | Saving | Transferred | Planned |
+
+- **Sensible defaults.** New entries for a past month are saved as paid; entries for this month or later start pending. The expense form has a switch to override it. When the feature was installed, every existing entry before the current month was marked paid.
+- **Bank statements settle it.** Rows synced from the reconciler are saved as paid, and statement lines that match an entry you already recorded can mark that entry paid in the same step.
+- **Card bills.** Once a card's bill for the month is marked paid, the Upcoming card shows it as paid instead of counting down to the due date.
+- **Works while locked.** Paid state reveals no amount, so it can be changed while amounts are hidden, without the PIN. Demo mode refuses it like every other change.
+- **Smart filter.** `status:pending` (or `unpaid`) and `status:paid` (or `paid`) combine with the other filters, for example `status:pending type:emi`.
+- **Export and audit.** The Excel export has **Paid** and **Paid on** columns, and every change is recorded in `Expenses_Audit`.
+
 ---
 
 ## 🚀 Getting Started
@@ -154,6 +174,8 @@ node scripts/undo-legacy-reimport.js --fix   # per row: delete again, or keep
 node scripts/dedupe-expenses.js              # list duplicates, change nothing
 node scripts/dedupe-expenses.js --fix        # per group: add together, keep one, or skip
 ```
+
+`007_paid_status.sql` adds the paid state. It marks every existing entry from before the current month (Indian time) as paid, and leaves this month and later as pending for you to mark.
 
 **The one-time legacy import.** `scripts/migrate.sql` also imports an old flat `Expenses_Legacy` table, if one exists. It now runs at most once, only into an empty `Expenses` table, and records itself in `SchemaMigrations` as `migrate.sql:legacy-import`. Before this guard it ran on every migration and re-inserted legacy rows that had been deleted in the app; `undo-legacy-reimport.js` finds and removes those.
 
