@@ -76,7 +76,9 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 
 ### 🔒 11. Privacy by Default, Demo Data, Loans, Goals & Reminders
 - **Locked by default, enforced in the API.** Each user's saved setting decides what every response contains: `hidden` (amounts removed, charts keep only their shape), `demo` (plausible fake numbers, consistent across the whole app, seeded per user), or `real`. Nothing the browser sends can widen it.
+- **No side channels while locked.** Amount filters such as `>5000` and sorting by amount need an unlock, since they would otherwise reveal hidden values; locking a tab drops any amount filter. Demo numbers are keyed with a server secret (`DEMO_SECRET`), and the demo seed is only sent to an unlocked tab, so fake amounts cannot be converted back into real ones.
 - **Unlock per tab.** The lock icon requests a short-lived, server-signed grant (optionally PIN-protected) that lives in the tab's session storage; other tabs stay locked and the tab re-locks after the configured idle window. Locking revokes the grant in the `RevokedUnlockGrants` table, so it is refused by every app instance, not just the one that issued it.
+- **PIN brute-force protection.** After 5 incorrect PINs, unlocking pauses for 15 minutes, doubling with each further lockout up to 24 hours. Attempts are counted atomically in the `UnlockAttempts` table, so parallel requests cannot bypass the limit, and a correct PIN resets it.
 - **Safe writes.** While hidden you can still add entries you type yourself, but existing rows are never touched: creating an entry for a month and category that already has one is refused with `409`, and **Fill all missing** skips those rows and tells you how many it skipped. Editing, deleting, bulk sync and undo need an unlock. In demo mode every change is refused with `423 Locked`.
 - **Settings tab**: default mode, mask category names, unlock window, PIN, demo-seed reshuffle.
 - **Loans**: principal, rate, tenure and start month give outstanding balance, payoff date, interest paid, an amortisation chart, recorded prepayments, a what-if prepayment slider and a "which loan to prepay first" ranking.
@@ -123,6 +125,18 @@ GITHUB_CLIENT_ID=
 
 # Your GitHub OAuth App Client Secret (Leave blank if Mock Auth is used)
 GITHUB_CLIENT_SECRET=
+
+# Numeric GitHub user ids allowed to sign in, comma separated (recommended in production).
+# Empty = any GitHub account can sign up (logged as a warning in production).
+# Find an id at https://api.github.com/users/<login>; a refused sign-in also shows it.
+ALLOWED_GITHUB_IDS=
+
+# ----------------------------------------
+# 🎭 Demo data
+# ----------------------------------------
+# A long, random string that keys the fake numbers shown in demo mode.
+# Falls back to JWT_SECRET when empty. Changing it reshuffles every user's demo numbers.
+DEMO_SECRET=
 ```
 
 ### 3. Database Initialization
@@ -130,7 +144,13 @@ Apply the relational schema in `scripts/migrate.sql` (idempotent; also migrates 
 ```bash
 node scripts/migrate-to-sql.js
 ```
-Re-run this after every pull that adds a file under `scripts/migrations/`. The latest, `004_unlock_revocations.sql`, creates the table that makes privacy locks durable across app instances.
+Re-run this after every pull that adds a file under `scripts/migrations/`. `004_unlock_revocations.sql` makes privacy locks durable across app instances, and `005_unlock_attempts.sql` adds the PIN attempt limit. Until 005 is applied, unlocking still works but PIN attempts are not limited, and the server logs an error saying so.
+
+**Legacy and seeded accounts.** Users created by the legacy migration or by `--seed` have no GitHub identity, and sign-in never links them automatically by username. Link one explicitly:
+```bash
+node scripts/link-legacy-user.js --user-id <guid> --github-id <numeric id>
+```
+The script shows what the row owns and asks for confirmation. If that GitHub account already signed in and received a new, empty user, the empty row is replaced; if it already holds data, the script refuses.
 To additionally import sample data from `public/expense_data.json` into the relational tables:
 ```bash
 node scripts/migrate-to-sql.js --seed
@@ -154,7 +174,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 The application is specifically optimized for **Azure App Service Linux** using a **Next.js Standalone** build.
 
-1. **Azure Web App Setup**: Create an App Service running Node.js 22 LTS. Set the **Startup Command** to `node server.js` and add `PORT=8080` to your Application Settings.
+1. **Azure Web App Setup**: Create an App Service running Node.js 22 LTS. Set the **Startup Command** to `node server.js` and add `PORT=8080` to your Application Settings, along with `DATABASE_URL`, `JWT_SECRET`, `APP_BASE_URL`, the GitHub OAuth settings, `ALLOWED_GITHUB_IDS` and `DEMO_SECRET`.
 2. **GitHub Actions**: The repository includes a ready-to-go `.github/workflows/develop_tracker.yml` CI/CD pipeline.
 3. **Artifact Zipping**: The workflow installs with `npm ci` on Node 22, builds the highly optimized `.next/standalone` directory, zips it locally on the build server to bypass Azure hidden-file strictness, and uses OIDC to deploy directly to your App Service.
 

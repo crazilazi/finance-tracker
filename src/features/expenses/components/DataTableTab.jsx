@@ -301,8 +301,9 @@ export default function DataTableTab({ onEdit, onCopyTemplate, onScanMissing }) 
       title: 'Amount',
       dataIndex: 'amount',
       key: 'amount',
-      sorter: true,
-      sortOrder: sortCol === 'amount' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null,
+      // The server ignores amount sorting unless unlocked, so do not offer it
+      sorter: can.real,
+      sortOrder: can.real && sortCol === 'amount' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null,
       render: (amt, record) => isEditing(record, 'amount') ? (
         <InputNumber
           autoFocus

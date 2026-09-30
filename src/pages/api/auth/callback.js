@@ -3,6 +3,7 @@ import {
   serializeCookie,
   parseCookies,
   safeEqual,
+  isGithubIdAllowed,
   SESSION_COOKIE,
   OAUTH_STATE_COOKIE,
   SESSION_MAX_AGE,
@@ -103,6 +104,17 @@ export default async function handler(req, res) {
     };
   } else {
     { res.status(500).json({ error: 'Authentication is not configured.' }); return; }
+  }
+
+  // Checked before any Users row is created, so a refused account leaves no trace.
+  if (profile.oauth_provider === 'github' && !isGithubIdAllowed(profile.oauth_id)) {
+    console.warn(`[auth] Refused sign-in for GitHub id ${profile.oauth_id} (${profile.username}): not in ALLOWED_GITHUB_IDS.`);
+    res.setHeader('Set-Cookie', clearStateCookie);
+    res.status(403).send(
+      `This GitHub account is not allowed to use this app. Your GitHub account id is ${profile.oauth_id}; ` +
+      'the owner can add it to ALLOWED_GITHUB_IDS.'
+    );
+    return;
   }
 
   try {

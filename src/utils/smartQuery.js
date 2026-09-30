@@ -29,6 +29,30 @@ function scale(numStr, suffix) {
   return n;
 }
 
+const AMOUNT_COMPARE_RE = /^(>=|<=|>|<|=)(\d+(?:\.\d+)?)(k|l)?$/;
+const AMOUNT_RANGE_RE = /^(\d+(?:\.\d+)?)(k|l)?-(\d+(?:\.\d+)?)(k|l)?$/;
+
+function normalise(text) {
+  return String(text).toLowerCase().replace(/(>=|<=|>|<|=)\s+/g, '$1').trim();
+}
+
+/**
+ * The query with its amount comparisons and ranges removed. Used when a tab
+ * locks, because the server refuses amount filters while amounts are hidden.
+ */
+export function stripAmountTerms(text) {
+  if (!text) return text;
+  return normalise(text)
+    .split(/\s+/)
+    .filter(t => t && !AMOUNT_COMPARE_RE.test(t) && !AMOUNT_RANGE_RE.test(t))
+    .join(' ');
+}
+
+export function hasAmountTerms(text) {
+  const p = parseSmartQuery(text);
+  return p.amountEq !== null || p.amountMin !== null || p.amountMax !== null;
+}
+
 export function parseSmartQuery(text) {
   const out = {
     amountMin: null,
@@ -42,16 +66,13 @@ export function parseSmartQuery(text) {
   };
   if (!text) return out;
 
-  const clean = String(text)
-    .toLowerCase()
-    .replace(/(>=|<=|>|<|=)\s+/g, '$1')
-    .trim();
+  const clean = normalise(text);
   if (!clean) return out;
 
   const free = [];
   for (const token of clean.split(/\s+/)) {
     let m;
-    if ((m = token.match(/^(>=|<=|>|<|=)(\d+(?:\.\d+)?)(k|l)?$/))) {
+    if ((m = token.match(AMOUNT_COMPARE_RE))) {
       const v = scale(m[2], m[3]);
       if (v === null) continue;
       if (m[1] === '>') out.amountMin = Math.max(out.amountMin ?? -Infinity, v + 0.01);
@@ -61,7 +82,7 @@ export function parseSmartQuery(text) {
       else out.amountEq = v;
       continue;
     }
-    if ((m = token.match(/^(\d+(?:\.\d+)?)(k|l)?-(\d+(?:\.\d+)?)(k|l)?$/))) {
+    if ((m = token.match(AMOUNT_RANGE_RE))) {
       const lo = scale(m[1], m[2]);
       const hi = scale(m[3], m[4]);
       if (lo !== null && hi !== null) {

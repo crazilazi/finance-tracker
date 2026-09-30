@@ -47,6 +47,7 @@ export const expensesInitialState = {
   privacy: { mode: 'hidden', unlocked: false, unlockExpiresAt: null },
   settings: null,
   unlockPromptOpen: false,
+  unlockError: null,        // last unlock failure shown in the dialog: { text, retryAt? }
 
   // Cache: key = "mode|filter|query|page|pageSize|sortCol|sortDir|type|category|search|year|month"
   tableCache: {},
@@ -131,6 +132,11 @@ const expensesSlice = createSlice({
     },
     setUnlockPromptOpen(state, action) {
       state.unlockPromptOpen = !!action.payload;
+      // Reopening clears a plain error; a lockout stays (the dialog hides it once it expires)
+      if (action.payload && state.unlockError && !state.unlockError.retryAt) state.unlockError = null;
+    },
+    setUnlockError(state, action) {
+      state.unlockError = action.payload || null;
     },
 
     // ── Loading ───────────────────────────────────────────────
@@ -268,6 +274,7 @@ export const {
   syncMode,
   setSettings,
   setUnlockPromptOpen,
+  setUnlockError,
   setLoading,
   setTableLoading,
   setAnalyticsLoading,

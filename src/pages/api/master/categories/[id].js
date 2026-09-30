@@ -2,6 +2,8 @@ import * as dbProvider from '../../../../lib/db/dbProvider';
 import { dbConfig } from '../../../../lib/db/config';
 import { requireContext, assertWrite, sendServerError, methodNotAllowed } from '../../../../lib/apiUtils';
 import { validateCategoryPatch, isGuid } from '../../../../lib/validation';
+import { finalizeCategories } from '../../../../lib/privacyResponse';
+import { shapeCategoriesForPrivacy } from '../../../../lib/db/privacyTransforms';
 
 /**
  * PUT    /api/master/categories/:id   partial update (incl. card_statement_day / card_due_day)
@@ -20,7 +22,9 @@ export default async function handler(req, res) {
     if (error) { res.status(400).json({ error }); return; }
     try {
       const updated = await dbProvider.updateCategory(dbConfig, id, value, ctx.user.user_id);
-      res.status(200).json(updated);
+      // The provider reads real amounts; shape them like the list endpoint does.
+      const [shaped] = await finalizeCategories(ctx, shapeCategoriesForPrivacy([updated], ctx.privacy));
+      res.status(200).json(shaped);
     } catch (err) {
       if (err.status) { res.status(err.status).json({ error: err.message }); return; }
       sendServerError(res, err, 'PUT /api/master/categories/[id]');

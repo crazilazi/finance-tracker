@@ -3,6 +3,7 @@ import { dbConfig } from '../../../lib/db/config';
 import { requireContext, assertWrite, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
 import { normalizeType } from '../../../lib/validation';
 import { finalizeCategories } from '../../../lib/privacyResponse';
+import { shapeCategoriesForPrivacy } from '../../../lib/db/privacyTransforms';
 
 /**
  * Categories are per-user reference data, shaped by the privacy mode
@@ -40,7 +41,9 @@ export default async function handler(req, res) {
 
     try {
       const created = await dbProvider.createCategory(dbConfig, { name, type }, ctx.user.user_id);
-      res.status(200).json(created);
+      // The provider reads real amounts; shape them like the list endpoint does.
+      const [shaped] = await finalizeCategories(ctx, shapeCategoriesForPrivacy([created], ctx.privacy));
+      res.status(200).json(shaped);
     } catch (err) {
       sendServerError(res, err, 'POST /api/master/categories');
     }

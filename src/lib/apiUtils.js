@@ -1,7 +1,7 @@
 import { getSessionUser } from './auth';
 import * as dbProvider from './db/dbProvider';
 import { dbConfig } from './db/config';
-import { withDefaults, isWriteAllowed } from './privacy';
+import { withDefaults, isWriteAllowed, deriveDemoKey } from './privacy';
 import { resolveMode } from './unlockGrants';
 
 /**
@@ -35,7 +35,8 @@ export function requireUser(req, res) {
  * Like requireUser, but also loads the user's settings and resolves the
  * privacy mode for this request. Sets the X-Privacy-Mode response header.
  *
- * Returns { user, settings, privacy: { mode, unlocked, unlockExpiresAt, demoSeed, maskCategoryNames } }
+ * Returns { user, settings, privacy: { mode, unlocked, unlockExpiresAt, demoKey, maskCategoryNames } }
+ * demoKey is only derived in demo mode; it keys the fake amounts (see lib/privacy.js).
  * or null after writing a 401 / 500.
  */
 export async function requireContext(req, res) {
@@ -46,7 +47,7 @@ export async function requireContext(req, res) {
     const resolved = await resolveMode(req, user.user_id, settings);
     const privacy = {
       ...resolved,
-      demoSeed: settings.privacy.demoSeed,
+      demoKey: resolved.mode === 'demo' ? deriveDemoKey(user.user_id, settings.privacy.demoSeed) : '',
       maskCategoryNames: resolved.mode !== 'real' && !!settings.privacy.maskCategoryNames,
       unlockMinutes: settings.privacy.unlockMinutes,
     };

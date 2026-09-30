@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     authenticated: true,
     username: user.username,
     email: user.email,
-    settings: publicSettings(settings),
+    settings: publicSettings(settings, resolved.mode),
     privacy: { mode: resolved.mode, unlocked: resolved.unlocked, unlockExpiresAt: resolved.unlockExpiresAt },
   });
 }

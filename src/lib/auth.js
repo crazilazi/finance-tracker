@@ -84,3 +84,35 @@ export function safeEqual(a, b) {
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
 }
+
+// ---- Sign-up allowlist ------------------------------------------------------
+
+let warnedOpenSignup = false;
+
+/** Numeric GitHub user ids from ALLOWED_GITHUB_IDS (comma or space separated). */
+export function allowedGithubIds() {
+  return new Set(
+    String(process.env.ALLOWED_GITHUB_IDS || '')
+      .split(/[\s,]+/)
+      .map(s => s.trim())
+      .filter(s => /^\d+$/.test(s))
+  );
+}
+
+/**
+ * True when this GitHub account may sign in. Ids are used rather than logins
+ * because a GitHub login can be renamed and then registered by someone else.
+ * With no allowlist configured every account is allowed; in production that
+ * is logged once so an open deployment is noticed.
+ */
+export function isGithubIdAllowed(githubId) {
+  const allowed = allowedGithubIds();
+  if (allowed.size === 0) {
+    if (process.env.NODE_ENV === 'production' && !warnedOpenSignup) {
+      warnedOpenSignup = true;
+      console.warn('[auth] ALLOWED_GITHUB_IDS is empty: any GitHub account can sign up.');
+    }
+    return true;
+  }
+  return allowed.has(String(githubId));
+}

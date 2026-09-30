@@ -32,15 +32,21 @@ export default function SettingsTab() {
     setClearPin(false);
   }, [settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The server only returns the demo seed to an unlocked tab. Without it the
+  // seed must never be sent, or saving would overwrite it with the default.
+  const hasSeed = saved.demoSeed !== undefined && saved.demoSeed !== null;
+  const seedChanged = hasSeed && form.demoSeed !== saved.demoSeed;
+
   const dirty = form.defaultMode !== (saved.defaultMode || 'hidden')
     || form.maskCategoryNames !== !!saved.maskCategoryNames
     || form.unlockMinutes !== (saved.unlockMinutes ?? 15)
-    || form.demoSeed !== (saved.demoSeed ?? 20260912)
+    || seedChanged
     || pin.length > 0 || clearPin;
 
   const save = () => {
     if (!can.settings) { dispatch(setUnlockPromptOpen(true)); return; }
-    const payload = { privacy: { ...form } };
+    const { demoSeed, ...rest } = form;
+    const payload = { privacy: { ...rest, ...(seedChanged ? { demoSeed } : {}) } };
     if (pin) payload.privacy.pin = pin;
     if (clearPin) payload.privacy.clearPin = true;
     dispatch({ type: 'expenses/saveSettings', payload });
@@ -123,10 +129,14 @@ export default function SettingsTab() {
               <div className="font-semibold text-sm">Demo seed</div>
               <div className="text-xs text-gray-400">Drives the fake numbers. Same seed = same numbers on every device. Reshuffle to change them all.</div>
             </div>
-            <Space>
-              <Tag style={{ margin: 0, fontFamily: 'monospace' }}>{form.demoSeed}</Tag>
-              <Button size="small" icon={<ReloadOutlined />} onClick={() => setForm(f => ({ ...f, demoSeed: Math.floor(Math.random() * 2147483647) }))} disabled={!can.settings}>Reshuffle</Button>
-            </Space>
+            {hasSeed ? (
+              <Space>
+                <Tag style={{ margin: 0, fontFamily: 'monospace' }}>{form.demoSeed}</Tag>
+                <Button size="small" icon={<ReloadOutlined />} onClick={() => setForm(f => ({ ...f, demoSeed: Math.floor(Math.random() * 2147483647) }))} disabled={!can.settings}>Reshuffle</Button>
+              </Space>
+            ) : (
+              <Tag style={{ margin: 0 }} icon={<LockOutlined />}>Unlock to view</Tag>
+            )}
           </div>
 
           <Divider style={{ margin: '4px 0' }} />

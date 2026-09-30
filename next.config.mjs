@@ -14,6 +14,9 @@ const nextConfig = {
   transpilePackages: ['antd', '@ant-design', 'rc-util', 'rc-pagination', 'rc-picker', 'rc-tree', 'rc-table'],
   reactStrictMode: true,
   output: "standalone",
+  // Nothing uses next/image, so switch the optimisation endpoint off entirely.
+  // It has had critical advisories and would otherwise be reachable by anyone.
+  images: { unoptimized: true },
   turbopack: {},
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

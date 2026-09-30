@@ -8,6 +8,8 @@ import {
   syncMode,
   setSettings,
   setUnlockPromptOpen,
+  setUnlockError,
+  setQuery,
   setLoading,
   setTableData,
   setAnalytics,
@@ -30,6 +32,7 @@ import {
 } from './expensesSlice';
 import { getUnlockToken, setUnlockToken, clearUnlockToken } from '../../lib/unlockStorage';
 import { apiFetch } from '../../lib/apiClient';
+import { stripAmountTerms } from '../../utils/smartQuery';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -427,14 +430,17 @@ export const unlockEpic = (action$) =>
         mergeMap(({ body }) => {
           setUnlockToken(body.token, body.expiresAt);
           return of(
+            setUnlockError(null),
             setUnlockPromptOpen(false),
             setPrivacy({ mode: 'real', unlocked: true, unlockExpiresAt: body.expiresAt }),
             setLastNotice('Unlocked for this tab'),
             ...refreshAll(),
             { type: 'expenses/fetchLoans' },
+            // Settings carry the demo seed only for unlocked requests
+            { type: 'expenses/fetchSettings' },
           );
         }),
-        catchError(err => of(setLastError(err.message)))
+        catchError(err => of(setUnlockError({ text: err.message, retryAt: err.retryAt || null })))
       )
     )
   );
@@ -463,12 +469,20 @@ export const lockEpic = (action$, state$) =>
       const request = hadToken ? apiFetch('/api/privacy/lock', { method: 'POST' }).catch(() => null) : Promise.resolve(null);
       clearUnlockToken();
       const defaultMode = state.expenses.settings?.privacy?.defaultMode || 'hidden';
+      // The server refuses amount filters while hidden; drop them rather than fail every refresh
+      const query = state.expenses.query;
+      const lockedQuery = defaultMode === 'hidden' ? stripAmountTerms(query) : query;
+      const queryChanged = lockedQuery !== query;
+      const notice = queryChanged ? 'Locked · amount filter cleared' : 'Locked';
       return from(request).pipe(
         mergeMap(() => of(
           setPrivacy({ mode: defaultMode, unlocked: false, unlockExpiresAt: null }),
-          ...(action.payload?.silent ? [] : [setLastNotice('Locked')]),
+          ...(queryChanged ? [setQuery(lockedQuery)] : []),
+          ...(action.payload?.silent && !queryChanged ? [] : [setLastNotice(notice)]),
           ...refreshAll(),
           { type: 'expenses/fetchLoans' },
+          // Re-read settings so the demo seed is dropped from this tab's state
+          { type: 'expenses/fetchSettings' },
         ))
       );
     })
