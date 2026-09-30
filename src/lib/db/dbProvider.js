@@ -49,6 +49,10 @@ export const bulkSyncExpenses = wrap(mssqlProvider.bulkSyncExpenses);
 export const verifyOrCreateUser = wrap(mssqlProvider.verifyOrCreateUser);
 
 export const getUserSettings = wrap(mssqlProvider.getUserSettings);
+export const getSessionState = wrap(mssqlProvider.getSessionState);
+export const getSessionVersion = wrap(mssqlProvider.getSessionVersion);
+export const bumpSessionVersion = wrap(mssqlProvider.bumpSessionVersion);
+export const revokeSession = wrap(mssqlProvider.revokeSession);
 export const saveUserSettings = wrap(mssqlProvider.saveUserSettings);
 export const isUnlockGrantRevoked = wrap(mssqlProvider.isUnlockGrantRevoked);
 export const revokeUnlockGrant = wrap(mssqlProvider.revokeUnlockGrant);

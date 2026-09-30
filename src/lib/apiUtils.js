@@ -1,7 +1,5 @@
-import { getSessionUser } from './auth';
-import * as dbProvider from './db/dbProvider';
-import { dbConfig } from './db/config';
 import { withDefaults, isWriteAllowed, deriveDemoKey } from './privacy';
+import { authenticate, clearSessionCookie } from './session';
 import { resolveMode } from './unlockGrants';
 
 /**
@@ -19,16 +17,29 @@ export function methodNotAllowed(res, allowed) {
 }
 
 /**
- * Returns the authenticated user or writes a 401 and returns null.
- * Sessions issued before the relational migration carry no user_id and are rejected.
+ * Resolves to { user, settings } for a valid, current session, or writes a 401
+ * (clearing the cookie) and resolves to null. See lib/session.js for what
+ * "valid" means. settings are the raw saved settings (use withDefaults).
  */
-export function requireUser(req, res) {
-  const user = getSessionUser(req);
-  if (!user || !user.user_id) {
-    res.status(401).json({ error: 'Unauthorized' });
+export async function requireSession(req, res) {
+  try {
+    const result = await authenticate(req);
+    if (result.error) {
+      clearSessionCookie(req, res);
+      res.status(401).json({ error: 'Unauthorized' });
+      return null;
+    }
+    return result;
+  } catch (err) {
+    sendServerError(res, err, 'requireSession');
     return null;
   }
-  return user;
+}
+
+/** Like requireSession, resolving to just the user. */
+export async function requireUser(req, res) {
+  const session = await requireSession(req, res);
+  return session ? session.user : null;
 }
 
 /**
@@ -40,10 +51,11 @@ export function requireUser(req, res) {
  * or null after writing a 401 / 500.
  */
 export async function requireContext(req, res) {
-  const user = requireUser(req, res);
-  if (!user) return null;
+  const session = await requireSession(req, res);
+  if (!session) return null;
+  const { user } = session;
   try {
-    const settings = withDefaults(await dbProvider.getUserSettings(dbConfig, user.user_id));
+    const settings = withDefaults(session.settings);
     const resolved = await resolveMode(req, user.user_id, settings);
     const privacy = {
       ...resolved,

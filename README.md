@@ -9,7 +9,9 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 ### 🔐 1. User-Based Scoping & OAuth 2.0 Authentication
 - **Multi-Tenant User Data Isolation**: Every transaction, category, and report is automatically scoped to the logged-in user context.
 - **OAuth 2.0 Engine**: Supports real GitHub OAuth 2.0 (with CSRF `state` verification) and an interactive Mock OAuth 2.0 consent page that is only available in development and only when GitHub is not configured.
-- **Session Security**: Signed JWT sessions in `HttpOnly`, `SameSite=Lax`, `Secure` cookies; every API request is scoped by the `user_id` in the session, never by a client-supplied name.
+- **Owner-only by default**: Only the GitHub account `crazilazi` (id `24241036`) can use the app, checked at sign-in and again on every request. `ALLOWED_GITHUB_IDS` replaces that list; `*` opens sign-up to everyone.
+- **Session Security**: Signed JWT sessions in `HttpOnly`, `SameSite=Lax`, `Secure` cookies; every API request is scoped by the `user_id` in the session, never by a client-supplied name. Every request also checks the session against the database, so **Log out** ends that session for good (a copied cookie stops working too), and **Settings → Sign out other devices** ends every other session at once.
+- **Content-Security-Policy**: Scripts load only from the app itself and fonts only from Google Fonts. The policy ships in report-only mode: violations are written to the server log by `/api/csp-report`, and `CSP_ENFORCE` in `next.config.mjs` switches it to enforcing once the log stays quiet.
 - **Input Validation**: All expense payloads and query parameters are validated server-side (month format, amount range, allow-listed types, GUID ids) and SQL errors are never returned to the browser.
 
 ### 📋 2. Copy Month Expense Template
@@ -147,9 +149,9 @@ GITHUB_CLIENT_ID=
 # Your GitHub OAuth App Client Secret (Leave blank if Mock Auth is used)
 GITHUB_CLIENT_SECRET=
 
-# Numeric GitHub user ids allowed to sign in, comma separated (recommended in production).
-# Empty = any GitHub account can sign up (logged as a warning in production).
-# Find an id at https://api.github.com/users/<login>; a refused sign-in also shows it.
+# Numeric GitHub user ids allowed to use the app, comma separated.
+# Empty = the owner only (crazilazi, 24241036). "*" = any GitHub account.
+# Find an id at https://api.github.com/users/<login>; refused sign-ins are logged with it.
 ALLOWED_GITHUB_IDS=
 
 # ----------------------------------------
@@ -176,6 +178,14 @@ node scripts/dedupe-expenses.js --fix        # per group: add together, keep one
 ```
 
 `007_paid_status.sql` adds the paid state. It marks every existing entry from before the current month (Indian time) as paid, and leaves this month and later as pending for you to mark.
+
+`008_sessions.sql` makes sessions revocable. Until it is applied, sign-in and the owner-only check still work, but Log out only clears the cookie and **Sign out other devices** fails; the server logs an error saying so.
+
+**A least-privilege login for the app.** The app only reads and writes rows, so it should not connect as the server admin. With the admin `DATABASE_URL` in your local `.env`, run:
+```bash
+node scripts/create-app-db-user.js
+```
+It creates a `tracker_app` database user with a random password and read/write rights only, signs in as it to prove it cannot alter tables, and prints the connection string to use as the App Service `DATABASE_URL`. Keep the admin connection string locally for migrations.
 
 **The one-time legacy import.** `scripts/migrate.sql` also imports an old flat `Expenses_Legacy` table, if one exists. It now runs at most once, only into an empty `Expenses` table, and records itself in `SchemaMigrations` as `migrate.sql:legacy-import`. Before this guard it ran on every migration and re-inserted legacy rows that had been deleted in the app; `undo-legacy-reimport.js` finds and removes those.
 
@@ -207,7 +217,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 The application is specifically optimized for **Azure App Service Linux** using a **Next.js Standalone** build.
 
-1. **Azure Web App Setup**: Create an App Service running Node.js 22 LTS. Set the **Startup Command** to `node server.js` and add `PORT=8080` to your Application Settings, along with `DATABASE_URL`, `JWT_SECRET`, `APP_BASE_URL`, the GitHub OAuth settings, `ALLOWED_GITHUB_IDS` and `DEMO_SECRET`.
+1. **Azure Web App Setup**: Create an App Service running Node.js 22 LTS. Set the **Startup Command** to `node server.js` and add `PORT=8080` to your Application Settings, along with `DATABASE_URL` (the least-privilege `tracker_app` login, not the admin), `JWT_SECRET`, `APP_BASE_URL`, the GitHub OAuth settings and `DEMO_SECRET`. `ALLOWED_GITHUB_IDS` is optional: without it only the owner can sign in.
 2. **GitHub Actions**: The repository includes a ready-to-go `.github/workflows/develop_tracker.yml` CI/CD pipeline.
 3. **Artifact Zipping**: The workflow installs with `npm ci` on Node 22, builds the highly optimized `.next/standalone` directory, zips it locally on the build server to bypass Azure hidden-file strictness, and uses OIDC to deploy directly to your App Service.
 4. **Time zone**: Add the Application Setting `TZ=Asia/Kolkata`. App Service runs in UTC by default, which would make budgets, reminders and the This Month checklist switch months at 05:30 IST instead of midnight. Check it from the Kudu SSH console with `date`.

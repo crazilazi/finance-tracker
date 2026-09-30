@@ -102,6 +102,7 @@ async function run() {
       await del.query(`
         IF OBJECT_ID('UnlockAttempts') IS NOT NULL DELETE FROM UnlockAttempts WHERE user_id = @id;
         IF OBJECT_ID('RevokedUnlockGrants') IS NOT NULL DELETE FROM RevokedUnlockGrants WHERE user_id = @id;
+        IF OBJECT_ID('RevokedSessions') IS NOT NULL DELETE FROM RevokedSessions WHERE user_id = @id;
         DELETE FROM UserSettings WHERE user_id = @id;
         DELETE FROM Users WHERE id = @id;
       `);

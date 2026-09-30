@@ -37,6 +37,7 @@ import {
   lockEpic,
   checkAuthSessionEpic,
   logoutEpic,
+  signOutOthersEpic,
 } from '../features/expenses/expensesEpics';
 
 export const rootEpic = combineEpics(
@@ -77,4 +78,5 @@ export const rootEpic = combineEpics(
   lockEpic,
   checkAuthSessionEpic,
   logoutEpic,
+  signOutOthersEpic,
 );

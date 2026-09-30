@@ -5,7 +5,7 @@ import { requireUser, sendServerError, methodNotAllowed } from '../../../lib/api
 export default async function handler(req, res) {
   if (req.method !== 'GET') { methodNotAllowed(res, ['GET']); return; }
 
-  const user = requireUser(req, res);
+  const user = await requireUser(req, res);
   if (!user) return;
 
   try {

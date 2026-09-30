@@ -420,6 +420,13 @@ export const deleteLoanEpic = simpleMutation('expenses/deleteLoan', p => ({ url:
 export const addPrepaymentEpic = simpleMutation('expenses/addPrepayment', p => ({ url: `/api/loans/${p.loanId}/prepayments`, options: { method: 'POST', body: JSON.stringify(p.prepayment) }, notice: 'Prepayment recorded' }), loansAfter);
 export const deletePrepaymentEpic = simpleMutation('expenses/deletePrepayment', p => ({ url: `/api/loans/${p.loanId}/prepayments/${p.id}`, options: { method: 'DELETE' }, notice: 'Prepayment removed' }), loansAfter);
 
+/** Ends every other session of this account; the server refreshes this tab's cookie. */
+export const signOutOthersEpic = simpleMutation(
+  'expenses/signOutOthers',
+  () => ({ url: '/api/auth/signout-others', options: { method: 'POST' }, notice: 'Signed out on every other device' }),
+  []
+);
+
 // ── Settings & privacy ───────────────────────────────────────────────────────
 
 export const fetchSettingsEpic = (action$, state$) =>
