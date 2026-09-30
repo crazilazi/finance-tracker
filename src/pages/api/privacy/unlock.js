@@ -1,6 +1,6 @@
 import * as dbProvider from '../../../lib/db/dbProvider';
 import { dbConfig } from '../../../lib/db/config';
-import { requireUser, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
+import { requireSession, sendServerError, methodNotAllowed } from '../../../lib/apiUtils';
 import { withDefaults, verifyPin, issueUnlockToken } from '../../../lib/privacy';
 
 /** Wrong PINs allowed before unlocking is paused (see migration 005). */
@@ -53,11 +53,12 @@ async function reserve(userId) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') { methodNotAllowed(res, ['POST']); return; }
 
-  const user = requireUser(req, res);
-  if (!user) return;
+  const session = await requireSession(req, res);
+  if (!session) return;
+  const { user } = session;
 
   try {
-    const settings = withDefaults(await dbProvider.getUserSettings(dbConfig, user.user_id));
+    const settings = withDefaults(session.settings);
     const { unlockMinutes, unlockPinHash } = settings.privacy;
 
     if (!unlockMinutes) {

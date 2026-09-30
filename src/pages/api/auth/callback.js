@@ -110,20 +110,19 @@ export default async function handler(req, res) {
   if (profile.oauth_provider === 'github' && !isGithubIdAllowed(profile.oauth_id)) {
     console.warn(`[auth] Refused sign-in for GitHub id ${profile.oauth_id} (${profile.username}): not in ALLOWED_GITHUB_IDS.`);
     res.setHeader('Set-Cookie', clearStateCookie);
-    res.status(403).send(
-      `This GitHub account is not allowed to use this app. Your GitHub account id is ${profile.oauth_id}; ` +
-      'the owner can add it to ALLOWED_GITHUB_IDS.'
-    );
+    res.status(403).send('This GitHub account is not allowed to use this app.');
     return;
   }
 
   try {
     const dbUser = await dbProvider.verifyOrCreateUser(dbConfig, profile);
+    const sessionVersion = await dbProvider.getSessionVersion(dbConfig, dbUser.id);
 
     const token = signSession({
       user_id: dbUser.id,
       username: dbUser.username,
       email: dbUser.email,
+      sessionVersion,
     });
 
     res.setHeader('Set-Cookie', [

@@ -7,11 +7,20 @@ export const SESSION_COOKIE = 'auth_session';
 export const OAUTH_STATE_COOKIE = 'oauth_state';
 export const SESSION_MAX_AGE = 86400; // 1 day, matches the JWT expiry
 
-export function signSession(payload) {
+/**
+ * Signs a session cookie. Every session gets its own id (jti), so Log out can
+ * revoke exactly that session, and carries the user's session version (sv),
+ * so "Sign out other devices" can end all older sessions at once.
+ */
+export function signSession({ user_id, username, email, sessionVersion = 0 }) {
   if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not configured.');
   }
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '1d' });
+  return jwt.sign(
+    { user_id, username, email, sv: Number(sessionVersion) || 0 },
+    JWT_SECRET,
+    { expiresIn: '1d', jwtid: crypto.randomUUID() }
+  );
 }
 
 export function verifySession(token) {
@@ -85,32 +94,39 @@ export function safeEqual(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-// ---- Sign-up allowlist ------------------------------------------------------
+// ---- Who may use the app ---------------------------------------------------
+
+/**
+ * GitHub accounts allowed to use this app when ALLOWED_GITHUB_IDS is not set:
+ * the owner only (crazilazi). Numeric ids are used rather than logins because a
+ * login can be renamed and then registered by someone else.
+ */
+export const DEFAULT_ALLOWED_GITHUB_IDS = ['24241036'];
 
 let warnedOpenSignup = false;
 
-/** Numeric GitHub user ids from ALLOWED_GITHUB_IDS (comma or space separated). */
+/**
+ * Allowed GitHub ids. ALLOWED_GITHUB_IDS (comma or space separated) replaces
+ * the default list; the single value "*" allows every GitHub account.
+ * Returns null for "everyone".
+ */
 export function allowedGithubIds() {
-  return new Set(
-    String(process.env.ALLOWED_GITHUB_IDS || '')
-      .split(/[\s,]+/)
-      .map(s => s.trim())
-      .filter(s => /^\d+$/.test(s))
-  );
+  const raw = String(process.env.ALLOWED_GITHUB_IDS || '').trim();
+  if (raw === '*') return null;
+  const ids = raw.split(/[\s,]+/).map(x => x.trim()).filter(x => /^\d+$/.test(x));
+  return new Set(ids.length > 0 ? ids : DEFAULT_ALLOWED_GITHUB_IDS);
 }
 
 /**
- * True when this GitHub account may sign in. Ids are used rather than logins
- * because a GitHub login can be renamed and then registered by someone else.
- * With no allowlist configured every account is allowed; in production that
- * is logged once so an open deployment is noticed.
+ * True when this GitHub account may sign in and keep using the app. Checked at
+ * sign-in and again on every request, so removing an id takes effect at once.
  */
 export function isGithubIdAllowed(githubId) {
   const allowed = allowedGithubIds();
-  if (allowed.size === 0) {
+  if (allowed === null) {
     if (process.env.NODE_ENV === 'production' && !warnedOpenSignup) {
       warnedOpenSignup = true;
-      console.warn('[auth] ALLOWED_GITHUB_IDS is empty: any GitHub account can sign up.');
+      console.warn('[auth] ALLOWED_GITHUB_IDS is "*": any GitHub account can sign up.');
     }
     return true;
   }

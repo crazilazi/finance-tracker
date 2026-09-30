@@ -797,6 +797,104 @@ export async function getUserSettings(config, userId) {
   try { return JSON.parse(res.recordset[0].settings); } catch { return null; }
 }
 
+// ---- Sessions (see src/lib/session.js, migration 008) --------------------------
+
+const INVALID_COLUMN = 207;
+const INVALID_OBJECT = 208;
+const errNumber = (err) => err?.number ?? err?.originalError?.info?.number;
+let warnedNoSessionSchema = false;
+
+function warnNoSessionSchema(err) {
+  if (warnedNoSessionSchema) return;
+  warnedNoSessionSchema = true;
+  console.error('[sessions] Migration 008 not applied (' + err.message + '): sessions cannot be revoked until it runs.');
+}
+
+/**
+ * Everything a request needs to trust its session cookie, in one round trip:
+ * the user's identity and session version, whether this session id was
+ * revoked by Log out, and the user's settings. null when the user no longer
+ * exists. Without migration 008, sessionVersion and revoked are null.
+ */
+export async function getSessionState(config, userId, jti) {
+  const pool = await getPool(config);
+  const run = async (full) => {
+    const req = pool.request();
+    req.input('userId', mssql.UniqueIdentifier, userId);
+    if (full) req.input('jti', mssql.UniqueIdentifier, jti || null);
+    const res = await req.query(full ? `
+      SELECT u.oauth_provider, u.oauth_id, u.session_version,
+             CASE WHEN @jti IS NOT NULL AND EXISTS (SELECT 1 FROM RevokedSessions r WHERE r.jti = @jti) THEN 1 ELSE 0 END AS revoked,
+             s.settings
+      FROM Users u LEFT JOIN UserSettings s ON s.user_id = u.id
+      WHERE u.id = @userId` : `
+      SELECT u.oauth_provider, u.oauth_id, NULL AS session_version, NULL AS revoked, s.settings
+      FROM Users u LEFT JOIN UserSettings s ON s.user_id = u.id
+      WHERE u.id = @userId`);
+    return res.recordset[0] || null;
+  };
+  let row;
+  try {
+    row = await run(true);
+  } catch (err) {
+    if (![INVALID_COLUMN, INVALID_OBJECT].includes(errNumber(err))) throw err;
+    warnNoSessionSchema(err);
+    row = await run(false);
+  }
+  if (!row) return null;
+  let settings = null;
+  try { settings = row.settings ? JSON.parse(row.settings) : null; } catch { settings = null; }
+  return {
+    oauthProvider: row.oauth_provider || null,
+    oauthId: row.oauth_id || null,
+    sessionVersion: row.session_version === null || row.session_version === undefined ? null : Number(row.session_version),
+    revoked: row.revoked === 1 || row.revoked === true,
+    settings,
+  };
+}
+
+/** Current session version for signing a new cookie; 0 without migration 008. */
+export async function getSessionVersion(config, userId) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  try {
+    const res = await req.query('SELECT session_version FROM Users WHERE id = @userId');
+    return Number(res.recordset[0]?.session_version || 0);
+  } catch (err) {
+    if (errNumber(err) !== INVALID_COLUMN) throw err;
+    warnNoSessionSchema(err);
+    return 0;
+  }
+}
+
+/** Ends every session of the user at once. Returns the new version. */
+export async function bumpSessionVersion(config, userId) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  const res = await req.query(`
+    UPDATE Users SET session_version = session_version + 1
+    OUTPUT inserted.session_version
+    WHERE id = @userId`);
+  if (!res.recordset[0]) throw httpError(404, 'User not found');
+  return Number(res.recordset[0].session_version);
+}
+
+/** Ends one session (Log out). Idempotent; expired entries are pruned. */
+export async function revokeSession(config, { jti, userId, expiresAt }) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('jti', mssql.UniqueIdentifier, jti);
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  req.input('expiresAt', mssql.DateTime2, expiresAt);
+  await req.query(`
+    IF NOT EXISTS (SELECT 1 FROM RevokedSessions WHERE jti = @jti)
+      INSERT INTO RevokedSessions (jti, user_id, expires_at) VALUES (@jti, @userId, @expiresAt);
+    DELETE FROM RevokedSessions WHERE expires_at < SYSUTCDATETIME();
+  `);
+}
+
 // ---- Unlock PIN attempts (see src/pages/api/privacy/unlock.js) -----------------
 
 /**

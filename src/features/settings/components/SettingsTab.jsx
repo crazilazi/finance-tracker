@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Card, Radio, Switch, InputNumber, Input, Button, Alert, Divider, Tag, Space } from 'antd';
-import { LockOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
+import { Card, Radio, Switch, InputNumber, Input, Button, Alert, Divider, Tag, Space, Popconfirm } from 'antd';
+import { LockOutlined, ReloadOutlined, SaveOutlined, LogoutOutlined } from '@ant-design/icons';
 import { selectCan, setUnlockPromptOpen } from '../../expenses/expensesSlice';
 
 const MODE_HELP = {
@@ -148,6 +148,30 @@ export default function SettingsTab() {
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button type="primary" icon={<SaveOutlined />} onClick={save} disabled={!dirty}>Save settings</Button>
           </div>
+        </div>
+      </Card>
+
+      <Card title="🛡️ Sessions" className="bg-dark-card border-dark-border text-white shadow-xl">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div className="font-semibold text-sm">Sign out other devices</div>
+            <div className="text-xs text-gray-400">
+              Ends every other browser or phone signed in to this account, right away. This device stays signed in.
+              Use it after signing in on a shared device, or if you lose a phone.
+            </div>
+          </div>
+          <Popconfirm
+            title="Sign out every other device?"
+            description="They will need to sign in with GitHub again."
+            onConfirm={() => dispatch({ type: 'expenses/signOutOthers' })}
+            okText="Sign out others"
+            cancelText="Cancel"
+            disabled={!can.settings}
+          >
+            <Button icon={<LogoutOutlined />} onClick={!can.settings ? () => dispatch(setUnlockPromptOpen(true)) : undefined}>
+              Sign out other devices
+            </Button>
+          </Popconfirm>
         </div>
       </Card>
 

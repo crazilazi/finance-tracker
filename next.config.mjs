@@ -1,5 +1,37 @@
 import withPWAInit from "@ducanh2912/next-pwa";
 
+/**
+ * Content-Security-Policy. The app loads scripts only from itself (the one
+ * inline block, __NEXT_DATA__, is JSON and never executed) and fonts from
+ * Google. Ant Design injects inline styles, hence 'unsafe-inline' for styles
+ * only. connect-src lists Google Fonts because the service worker fetches
+ * them for its font cache.
+ *
+ * CSP_ENFORCE: ships as report-only so a missed source shows up as a logged
+ * violation (see /api/csp-report) instead of breaking the app. Switch it to
+ * true once a week of normal use has logged no violations.
+ */
+const CSP_ENFORCE = false;
+
+const csp = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+  "report-uri /api/csp-report",
+  "report-to csp",
+].join("; ");
+
+const isDev = process.env.NODE_ENV === "development";
+
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -7,6 +39,11 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
   // Only honoured by browsers over HTTPS, so harmless in local development
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  // next dev needs eval for hot reloading, so the policy is only sent by production builds
+  ...(isDev ? [] : [
+    { key: CSP_ENFORCE ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only", value: csp },
+    { key: "Reporting-Endpoints", value: 'csp="/api/csp-report"' },
+  ]),
 ];
 
 /** @type {import('next').NextConfig} */
