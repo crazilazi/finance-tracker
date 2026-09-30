@@ -28,11 +28,19 @@ export function withDefaults(settings) {
   return { ...s, privacy: { ...DEFAULT_PRIVACY, ...(s.privacy || {}) } };
 }
 
-/** Settings as returned to the client: never expose the PIN hash, only whether one exists. */
-export function publicSettings(settings) {
+/**
+ * Settings as returned to the client. The PIN hash is never exposed, only
+ * whether one exists. The demo seed is only included for an unlocked (real)
+ * request: it is an input to the demo-amount derivation, so a locked tab has
+ * no reason to see it.
+ */
+export function publicSettings(settings, mode = 'hidden') {
   const s = withDefaults(settings);
-  const { unlockPinHash, ...privacy } = s.privacy;
-  return { ...s, privacy: { ...privacy, hasPin: !!unlockPinHash } };
+  const { unlockPinHash, demoSeed, ...privacy } = s.privacy;
+  return {
+    ...s,
+    privacy: { ...privacy, hasPin: !!unlockPinHash, ...(mode === 'real' ? { demoSeed } : {}) },
+  };
 }
 
 // ---- Unlock grants ---------------------------------------------------------
@@ -115,18 +123,43 @@ export function verifyPin(pin, stored) {
   return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
 }
 
-// ---- Deterministic fake numbers for values that are not computed in SQL ---------
+// ---- Deterministic fake numbers ------------------------------------------------
+//
+// Demo amounts are real amounts scaled by a per-value factor. The factor is
+// keyed by a per-user secret (demoKey) derived server-side from DEMO_SECRET,
+// the user id and the user's demo seed. Without the server secret a viewer
+// cannot recompute the factor from the row id and seed, so demo amounts
+// cannot be divided back into real ones.
 
-/** Stable factor in [0.55, 1.55) from a seed and a key (loan principal, goal target, budgets…). */
-export function demoFactor(seed, key) {
-  const h = crypto.createHash('sha256').update(`${seed}|${key}`).digest();
+let warnedDemoSecret = false;
+
+function demoSecret() {
+  if (process.env.DEMO_SECRET) return process.env.DEMO_SECRET;
+  if (process.env.NODE_ENV === 'production' && !warnedDemoSecret) {
+    warnedDemoSecret = true;
+    console.warn('[privacy] DEMO_SECRET is not set; demo amounts are keyed with JWT_SECRET instead.');
+  }
+  return secret();
+}
+
+/** 64-char hex key for one user's demo amounts. Changes when the seed is reshuffled. */
+export function deriveDemoKey(userId, seed) {
+  return crypto
+    .createHmac('sha256', demoSecret())
+    .update(`${String(userId).toLowerCase()}|${Number(seed) || 0}`)
+    .digest('hex');
+}
+
+/** Stable factor in [0.55, 1.55) from a demo key and a value key (loan principal, goal target, budgets…). */
+export function demoFactor(demoKey, key) {
+  const h = crypto.createHash('sha256').update(`${demoKey}|${key}`).digest();
   const n = h.readUInt32BE(0) % 1000;
   return 0.55 + n / 1000;
 }
 
-export function demoAmount(value, seed, key) {
+export function demoAmount(value, demoKey, key) {
   if (value === null || value === undefined) return value;
-  const v = Number(value) * demoFactor(seed, key);
+  const v = Number(value) * demoFactor(demoKey, key);
   const step = Math.abs(v) < 5000 ? 10 : 100;
   return Math.round(v / step) * step;
 }

@@ -21,6 +21,6 @@ export async function apiFetch(url, options = {}) {
   try { body = await res.json(); } catch { /* empty body */ }
   const mode = res.headers.get('X-Privacy-Mode') || null;
   if (res.status === 401) { const e = new Error(body?.error || '401'); e.status = 401; e.auth = url.startsWith('/api/privacy'); throw e; }
-  if (!res.ok) { const e = new Error(body?.error || `Request failed (${res.status})`); e.status = res.status; e.mode = mode; throw e; }
+  if (!res.ok) { const e = new Error(body?.error || `Request failed (${res.status})`); e.status = res.status; e.mode = mode; e.retryAt = body?.retryAt || null; throw e; }
   return { body, mode };
 }

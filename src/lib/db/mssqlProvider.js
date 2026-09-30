@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { normalizeType } from '../validation';
 import { parseSmartQuery, isEmptySmartQuery } from '../../utils/smartQuery';
 import { demoAmount, demoFactor } from '../privacy';
-import { hideRows, hideSummary, hideCategories, demoCategories, demoSummaryConfig } from './privacyTransforms';
+import { hideRows, hideSummary, demoSummaryConfig, shapeCategoriesForPrivacy } from './privacyTransforms';
 import { loanSnapshot, currentMonth as currentMonthStr, addMonths } from '../../utils/loanMath';
 import { projectedCompletion, monthlyNeeded } from '../../utils/goalMath';
 import { detectYearlyItems, nextDueDate, daysUntil } from '../../utils/cadence';
@@ -75,7 +75,7 @@ function httpError(status, message) {
   return err;
 }
 
-const REAL = { mode: 'real', demoSeed: 0, maskCategoryNames: false };
+const REAL = { mode: 'real', demoKey: '', maskCategoryNames: false };
 const num = (v) => (v === null || v === undefined ? null : parseFloat(v));
 const shiftMonth = (month, delta) => addMonths(month, delta);
 
@@ -83,14 +83,17 @@ const shiftMonth = (month, delta) => addMonths(month, delta);
 
 /**
  * SQL expression for an expense amount under the given privacy mode.
- * In demo mode every row is scaled by a deterministic factor derived from the
- * row id and the user's seed, so table rows, aggregates and summaries agree.
- * Binds @demoSeed on `req` when needed (once per request object).
+ * In demo mode every row is scaled by a factor in [0.55, 1.55) taken from
+ * SHA-256(row id + demoKey). demoKey is an HMAC of the user id and seed under a
+ * server secret, so the factor cannot be recomputed from anything the client
+ * sees; table rows, aggregates and summaries still agree with each other.
+ * Binds @demoKey on `req` when needed (once per request object).
  */
 function amountExpr(req, privacy = REAL, alias = 'e') {
   if (privacy.mode !== 'demo') return `${alias}.amount`;
-  if (!req.parameters || !req.parameters.demoSeed) req.input('demoSeed', mssql.Int, Number(privacy.demoSeed) || 0);
-  return `ROUND(${alias}.amount * (0.55 + (ABS(CHECKSUM(CAST(${alias}.id AS NVARCHAR(36)), @demoSeed)) % 1000) / 1000.0), CASE WHEN ${alias}.amount < 5000 THEN -1 ELSE -2 END)`;
+  if (!req.parameters || !req.parameters.demoKey) req.input('demoKey', mssql.NVarChar(64), String(privacy.demoKey || ''));
+  const factor = `(0.55 + (CAST(SUBSTRING(HASHBYTES('SHA2_256', CONCAT(CAST(${alias}.id AS NVARCHAR(36)), @demoKey)), 1, 4) AS BIGINT) % 1000) / 1000.0)`;
+  return `ROUND(${alias}.amount * ${factor}, CASE WHEN ${alias}.amount < 5000 THEN -1 ELSE -2 END)`;
 }
 
 // ---- WHERE clause builder ---------------------------------------------------
@@ -145,6 +148,12 @@ function buildWhere(req, opts, privacy = REAL) {
 
   const sq = parseSmartQuery(query);
   if (!isEmptySmartQuery(sq)) {
+    // While amounts are hidden the amount expression is the real amount, so an
+    // amount filter would let a locked tab bisect any row's value. Refuse it.
+    const filtersAmount = sq.amountEq !== null || sq.amountMin !== null || sq.amountMax !== null;
+    if (filtersAmount && privacy.mode === 'hidden') {
+      throw httpError(423, 'Amounts are hidden. Unlock to filter by amount.');
+    }
     if (sq.amountEq !== null) { req.input('sqEq', mssql.Decimal(18, 2), sq.amountEq); conditions.push(`${AMT} = @sqEq`); }
     if (sq.amountMin !== null) { req.input('sqMin', mssql.Decimal(18, 2), sq.amountMin); conditions.push(`${AMT} >= @sqMin`); }
     if (sq.amountMax !== null) { req.input('sqMax', mssql.Decimal(18, 2), sq.amountMax); conditions.push(`${AMT} <= @sqMax`); }
@@ -202,8 +211,10 @@ export async function getExpensesPaginated(config, params, userId, privacy = REA
   const AMT = amountExpr(req, privacy);
 
   const allowedCols = ['month', 'category', 'amount', 'type'];
-  const safeCol = allowedCols.includes(sortCol)
-    ? (sortCol === 'category' ? 'c.name' : sortCol === 'type' ? 't.name' : sortCol === 'amount' ? AMT : 'e.month')
+  // Sorting by the real amount would rank hidden rows by value; fall back to month.
+  const effectiveSortCol = privacy.mode === 'hidden' && sortCol === 'amount' ? 'month' : sortCol;
+  const safeCol = allowedCols.includes(effectiveSortCol)
+    ? (effectiveSortCol === 'category' ? 'c.name' : effectiveSortCol === 'type' ? 't.name' : effectiveSortCol === 'amount' ? AMT : 'e.month')
     : 'e.month';
   const safeDir = sortDir === 'asc' ? 'ASC' : 'DESC';
 
@@ -326,7 +337,7 @@ async function getBudgetStatus(pool, userId, month, privacy = REAL) {
     ORDER BY c.name
   `);
   return res.recordset.map(r => {
-    const budget = privacy.mode === 'demo' ? demoAmount(num(r.budget_amount), privacy.demoSeed, `cat-budget:${r.category_id}`) : num(r.budget_amount);
+    const budget = privacy.mode === 'demo' ? demoAmount(num(r.budget_amount), privacy.demoKey, `cat-budget:${r.category_id}`) : num(r.budget_amount);
     const spent = num(r.spent) || 0;
     return { categoryId: r.category_id, category: r.category, icon: r.icon, month, budget, spent, pct: budget ? Math.round((spent / budget) * 100) : 0 };
   });
@@ -426,7 +437,7 @@ export async function getMonthSummary(config, month, userId, privacy = REAL) {
     recordedRows: recorded.length,
   };
   if (privacy.mode === 'hidden') summary = hideSummary(summary);
-  else if (privacy.mode === 'demo') summary = demoSummaryConfig(summary, privacy.demoSeed);
+  else if (privacy.mode === 'demo') summary = demoSummaryConfig(summary, privacy.demoKey);
   return summary;
 }
 
@@ -637,8 +648,10 @@ export async function bulkSyncExpenses(config, items, userId, { insertOnly = fal
 
 /**
  * Find the user for an OAuth identity, or create one. Matching is by
- * (provider, provider id) only; a legacy row with no provider may be claimed
- * once by a real provider login with the same username.
+ * (provider, provider id) only. Rows created before OAuth (legacy migration,
+ * --seed imports) are never linked automatically, because a matching username
+ * proves nothing about who owns the data; link them explicitly with
+ * scripts/link-legacy-user.js.
  */
 export async function verifyOrCreateUser(config, profile) {
   const pool = await getPool(config);
@@ -656,29 +669,6 @@ export async function verifyOrCreateUser(config, profile) {
     WHERE oauth_provider = @oauth_provider AND oauth_id = @oauth_id
   `);
   if (existing.recordset.length > 0) return existing.recordset[0];
-
-  const legacyReq = pool.request();
-  legacyReq.input('username', mssql.NVarChar(100), username);
-  const legacy = await legacyReq.query(`
-    SELECT TOP 1 id, username, email FROM Users
-    WHERE username = @username AND oauth_provider IS NULL AND oauth_id IS NULL
-  `);
-  if (legacy.recordset.length > 0) {
-    const row = legacy.recordset[0];
-    if (oauth_provider === 'mock') return row;
-    const claim = pool.request();
-    claim.input('id', mssql.UniqueIdentifier, row.id);
-    claim.input('oauth_provider', mssql.VarChar(50), oauth_provider);
-    claim.input('oauth_id', mssql.VarChar(100), oauth_id);
-    claim.input('email', mssql.VarChar(255), email || null);
-    const claimed = await claim.query(`
-      UPDATE Users
-      SET oauth_provider = @oauth_provider, oauth_id = @oauth_id, email = COALESCE(email, @email)
-      OUTPUT INSERTED.id, INSERTED.username, INSERTED.email
-      WHERE id = @id AND oauth_provider IS NULL AND oauth_id IS NULL
-    `);
-    if (claimed.recordset.length > 0) return claimed.recordset[0];
-  }
 
   const newUserId = crypto.randomUUID();
   const insertReq = pool.request();
@@ -704,6 +694,64 @@ export async function getUserSettings(config, userId) {
   const res = await req.query('SELECT settings FROM UserSettings WHERE user_id = @userId');
   if (!res.recordset[0]) return null;
   try { return JSON.parse(res.recordset[0].settings); } catch { return null; }
+}
+
+// ---- Unlock PIN attempts (see src/pages/api/privacy/unlock.js) -----------------
+
+/**
+ * Reserves one PIN attempt for the user before the PIN is checked.
+ * Returns { attempt, lockedUntil }: attempt is the 1-based attempt number since
+ * the last correct PIN, or null when unlocking is currently locked out.
+ */
+export async function reservePinAttempt(config, userId) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  const res = await req.query(`
+    MERGE UnlockAttempts WITH (HOLDLOCK) AS t
+    USING (SELECT @userId AS user_id) AS s ON t.user_id = s.user_id
+    WHEN MATCHED AND (t.locked_until IS NULL OR t.locked_until <= SYSUTCDATETIME()) THEN
+      UPDATE SET attempt_count = t.attempt_count + 1, locked_until = NULL, updated_at = SYSUTCDATETIME()
+    WHEN NOT MATCHED THEN
+      INSERT (user_id, attempt_count, lockout_count, locked_until, updated_at)
+      VALUES (@userId, 1, 0, NULL, SYSUTCDATETIME())
+    OUTPUT inserted.attempt_count AS attempt;
+    SELECT locked_until FROM UnlockAttempts WHERE user_id = @userId;
+  `);
+  const attempt = res.recordsets[0]?.[0]?.attempt ?? null;
+  const lockedUntil = res.recordsets[1]?.[0]?.locked_until || null;
+  return { attempt, lockedUntil: attempt === null ? lockedUntil : null };
+}
+
+/**
+ * Starts a lockout: 15 min, doubling with each consecutive lockout, capped at
+ * 24 h. A no-op while a lockout is already running. Returns the lockout end.
+ */
+export async function lockPinAttempts(config, userId) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  const res = await req.query(`
+    UPDATE UnlockAttempts
+    SET locked_until = DATEADD(MINUTE, CASE WHEN lockout_count >= 7 THEN 1440 ELSE 15 * POWER(2, lockout_count) END, SYSUTCDATETIME()),
+        lockout_count = lockout_count + 1,
+        attempt_count = 0,
+        updated_at = SYSUTCDATETIME()
+    WHERE user_id = @userId AND (locked_until IS NULL OR locked_until <= SYSUTCDATETIME());
+    SELECT locked_until FROM UnlockAttempts WHERE user_id = @userId;
+  `);
+  return res.recordsets[res.recordsets.length - 1]?.[0]?.locked_until || null;
+}
+
+export async function resetPinAttempts(config, userId) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  await req.query(`
+    UPDATE UnlockAttempts
+    SET attempt_count = 0, lockout_count = 0, locked_until = NULL, updated_at = SYSUTCDATETIME()
+    WHERE user_id = @userId
+  `);
 }
 
 // ---- Unlock-grant revocation (see src/lib/unlockGrants.js) --------------------
@@ -804,10 +852,7 @@ export async function getCategories(config, userId, typeName, privacy = REAL) {
   }
 
   const result = await req.query(`${categorySelect(AMT)} WHERE ${where} ORDER BY c.archived ASC, c.name ASC`);
-  let rows = result.recordset.map(shapeCategory);
-  if (privacy.mode === 'hidden') rows = hideCategories(rows);
-  else if (privacy.mode === 'demo') rows = demoCategories(rows, privacy.demoSeed);
-  return rows;
+  return shapeCategoriesForPrivacy(result.recordset.map(shapeCategory), privacy);
 }
 
 async function getCategoryById(executor, id, userId) {
@@ -991,8 +1036,8 @@ export async function getGoals(config, userId, privacy = REAL) {
     let target = g.target_amount;
     let starting = g.starting_amount;
     if (privacy.mode === 'demo') {
-      target = demoAmount(target, privacy.demoSeed, `goal:${g.id}`);
-      starting = demoAmount(starting, privacy.demoSeed, `goal-start:${g.id}`);
+      target = demoAmount(target, privacy.demoKey, `goal:${g.id}`);
+      starting = demoAmount(starting, privacy.demoKey, `goal-start:${g.id}`);
     }
     const saved = starting + (num(row.saved_from_ledger) || 0);
     const monthlyAvg = (num(row.last6) || 0) / 6;
@@ -1109,7 +1154,7 @@ export async function getLoans(config, userId, privacy = REAL) {
   return loansRes.recordset.map(row => {
     let loan = shapeLoan(row, preByLoan[String(row.id).toLowerCase()] || []);
     if (privacy.mode === 'demo') {
-      const f = demoFactor(privacy.demoSeed, `loan:${loan.id}`);
+      const f = demoFactor(privacy.demoKey, `loan:${loan.id}`);
       const scale = (v) => (v === null || v === undefined ? v : Math.round(v * f / 100) * 100);
       loan = { ...loan, principal: scale(loan.principal), emiAmount: scale(loan.emiAmount), prepayments: loan.prepayments.map(p => ({ ...p, amount: scale(p.amount) })) };
     }

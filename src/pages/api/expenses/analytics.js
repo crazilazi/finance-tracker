@@ -51,6 +51,8 @@ export default async function handler(req, res) {
 
     res.status(200).json(await finalizeAnalytics(ctx, payload));
   } catch (err) {
+    // 423: an amount filter was used while amounts are hidden
+    if (err.status) { res.status(err.status).json({ error: err.message, locked: err.status === 423, mode: ctx.privacy.mode }); return; }
     sendServerError(res, err, 'GET /api/expenses/analytics');
   }
 }

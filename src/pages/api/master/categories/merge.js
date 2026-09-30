@@ -2,6 +2,8 @@ import * as dbProvider from '../../../../lib/db/dbProvider';
 import { dbConfig } from '../../../../lib/db/config';
 import { requireContext, assertWrite, sendServerError, methodNotAllowed } from '../../../../lib/apiUtils';
 import { validateMerge } from '../../../../lib/validation';
+import { finalizeCategories } from '../../../../lib/privacyResponse';
+import { shapeCategoriesForPrivacy } from '../../../../lib/db/privacyTransforms';
 
 /**
  * POST /api/master/categories/merge  { sourceIds: [guid], targetId: guid }
@@ -18,7 +20,11 @@ export default async function handler(req, res) {
 
   try {
     const result = await dbProvider.mergeCategories(dbConfig, value.sourceIds, value.targetId, ctx.user.user_id);
-    res.status(200).json(result);
+    // The merged target is read with real amounts; shape it like the list endpoint does.
+    const [target] = await finalizeCategories(ctx, shapeCategoriesForPrivacy([result.target], ctx.privacy));
+    // The sources no longer exist, so the name masker cannot map them; hide them outright.
+    const removed = ctx.privacy.maskCategoryNames ? result.removed.map(() => 'Category') : result.removed;
+    res.status(200).json({ ...result, target, removed });
   } catch (err) {
     if (err.status) { res.status(err.status).json({ error: err.message }); return; }
     sendServerError(res, err, 'POST /api/master/categories/merge');

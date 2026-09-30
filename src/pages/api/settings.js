@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   if (!ctx) return;
 
   if (req.method === 'GET') {
-    res.status(200).json({ settings: publicSettings(ctx.settings), privacy: { mode: ctx.privacy.mode, unlocked: ctx.privacy.unlocked, unlockExpiresAt: ctx.privacy.unlockExpiresAt } });
+    res.status(200).json({ settings: publicSettings(ctx.settings, ctx.privacy.mode), privacy: { mode: ctx.privacy.mode, unlocked: ctx.privacy.unlocked, unlockExpiresAt: ctx.privacy.unlockExpiresAt } });
     return;
   }
 
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
         if (pin) next.privacy.unlockPinHash = hashPin(pin);
       }
       await dbProvider.saveUserSettings(dbConfig, ctx.user.user_id, next);
-      res.status(200).json({ settings: publicSettings(next) });
+      res.status(200).json({ settings: publicSettings(next, ctx.privacy.mode) });
     } catch (err) {
       sendServerError(res, err, 'PUT /api/settings');
     }

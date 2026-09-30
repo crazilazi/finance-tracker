@@ -4,7 +4,9 @@ import { GithubOutlined } from '@ant-design/icons';
 
 export default function Login() {
   const handleLogin = () => {
-    // Redirect to the backend auth init endpoint
+    // Full-page navigation on purpose: /api/auth/login is an API route that
+    // redirects to GitHub, so client-side routing (router.push) cannot follow it.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/api/auth/login';
   };
 

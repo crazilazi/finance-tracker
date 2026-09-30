@@ -80,23 +80,33 @@ export function hideCategories(rows) {
 }
 
 /** Demo mode for values that are user configuration rather than expense rows. */
-export function demoCategories(rows, seed) {
+export function demoCategories(rows, demoKey) {
   return rows.map(c => ({
     ...c,
-    default_amount: demoAmount(c.default_amount, seed, `cat-default:${c.id}`),
-    budget_amount: demoAmount(c.budget_amount, seed, `cat-budget:${c.id}`),
-    last_amount: demoAmount(c.last_amount, seed, `cat-last:${c.id}`),
+    default_amount: demoAmount(c.default_amount, demoKey, `cat-default:${c.id}`),
+    budget_amount: demoAmount(c.budget_amount, demoKey, `cat-budget:${c.id}`),
+    last_amount: demoAmount(c.last_amount, demoKey, `cat-last:${c.id}`),
   }));
 }
 
-export function demoSummaryConfig(s, seed) {
+/**
+ * Amount shaping for category objects, shared by the list endpoint and every
+ * category write response (create, update, merge), which read real amounts.
+ */
+export function shapeCategoriesForPrivacy(rows, privacy) {
+  if (!privacy || privacy.mode === 'real') return rows;
+  if (privacy.mode === 'hidden') return hideCategories(rows);
+  return demoCategories(rows, privacy.demoKey);
+}
+
+export function demoSummaryConfig(s, demoKey) {
   // Row amounts are already fake from SQL; budgets and defaults come from category config.
   return {
     ...s,
     items: s.items.map(i => ({
       ...i,
-      budget: demoAmount(i.budget, seed, `cat-budget:${i.categoryId}`),
-      suggestedAmount: i.amount === null && i.lastAmount === null ? demoAmount(i.suggestedAmount, seed, `cat-default:${i.categoryId}`) : i.suggestedAmount,
+      budget: demoAmount(i.budget, demoKey, `cat-budget:${i.categoryId}`),
+      suggestedAmount: i.amount === null && i.lastAmount === null ? demoAmount(i.suggestedAmount, demoKey, `cat-default:${i.categoryId}`) : i.suggestedAmount,
     })),
   };
 }
