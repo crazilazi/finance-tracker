@@ -122,58 +122,88 @@ GO
 
 
 -- ==========================================
--- DATA MIGRATION LOGIC
+-- DATA MIGRATION LOGIC: one-time import from the legacy flat table
 -- ==========================================
+-- This file is re-applied on every run of migrate-to-sql.js, so the import is
+-- guarded to run at most once. Before this guard it re-ran every time and
+-- re-inserted every legacy row whose id was no longer in Expenses, which
+-- brought back rows deleted in the app (and re-created renamed or merged
+-- categories). scripts/undo-legacy-reimport.js removes rows brought back that way.
+--
+-- The import runs only while Expenses is still empty. On a database that
+-- already has expenses it is recorded as done without touching any data.
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SchemaMigrations' AND xtype='U')
+    CREATE TABLE SchemaMigrations (
+        name NVARCHAR(200) NOT NULL PRIMARY KEY,
+        applied_at DATETIME NOT NULL DEFAULT GETDATE()
+    );
+GO
+
 IF EXISTS (SELECT 1 FROM sysobjects WHERE name='Expenses_Legacy' AND xtype='U')
+   AND NOT EXISTS (SELECT 1 FROM SchemaMigrations WHERE name = N'migrate.sql:legacy-import')
 BEGIN
-    PRINT 'Migrating legacy flat data to relational schema...'
+    SET XACT_ABORT ON;
+    BEGIN TRANSACTION;
 
-    -- A. Seed Users from historic data
-    INSERT INTO Users (id, username)
-    SELECT NEWID(), u.username 
-    FROM (
-        SELECT DISTINCT ISNULL(username, 'Default User') as username
-        FROM Expenses_Legacy
-        WHERE ISNULL(username, 'Default User') NOT IN (SELECT username FROM Users)
-    ) u;
+    IF EXISTS (SELECT 1 FROM Expenses)
+    BEGIN
+        PRINT 'Legacy import skipped: Expenses already has data, so it ran before. Recording it as done.'
+    END
+    ELSE
+    BEGIN
+        PRINT 'Migrating legacy flat data to relational schema...'
 
-    -- B. Seed Categories from historic data
-    INSERT INTO Categories (id, name, type_id, user_id)
-    SELECT NEWID(), cat.name, cat.type_id, cat.user_id 
-    FROM (
-        SELECT DISTINCT 
-            el.category as name, 
-            ISNULL(t.id, (SELECT TOP 1 id FROM Types WHERE name = 'Expense')) as type_id,
-            u.id as user_id
+        -- A. Seed Users from historic data
+        INSERT INTO Users (id, username)
+        SELECT NEWID(), u.username
+        FROM (
+            SELECT DISTINCT ISNULL(username, 'Default User') as username
+            FROM Expenses_Legacy
+            WHERE ISNULL(username, 'Default User') NOT IN (SELECT username FROM Users)
+        ) u;
+
+        -- B. Seed Categories from historic data
+        INSERT INTO Categories (id, name, type_id, user_id)
+        SELECT NEWID(), cat.name, cat.type_id, cat.user_id
+        FROM (
+            SELECT DISTINCT
+                el.category as name,
+                ISNULL(t.id, (SELECT TOP 1 id FROM Types WHERE name = 'Expense')) as type_id,
+                u.id as user_id
+            FROM Expenses_Legacy el
+            JOIN Users u ON ISNULL(el.username, 'Default User') = u.username
+            LEFT JOIN Types t ON el.type = t.name
+            WHERE NOT EXISTS (
+                SELECT 1 FROM Categories c
+                WHERE c.name = el.category
+                AND c.type_id = ISNULL(t.id, (SELECT TOP 1 id FROM Types WHERE name = 'Expense'))
+                AND c.user_id = u.id
+            )
+        ) cat;
+
+        -- C. Migrate records to new Expenses table mapping IDs
+        INSERT INTO Expenses (id, user_id, category_id, type_id, month, amount, sheet)
+        SELECT
+            ISNULL(TRY_CAST(el.uuid AS UNIQUEIDENTIFIER), NEWID()),
+            u.id,
+            c.id,
+            ISNULL(t.id, (SELECT TOP 1 id FROM Types WHERE name = 'Expense')),
+            el.month,
+            el.amount,
+            el.sheet
         FROM Expenses_Legacy el
         JOIN Users u ON ISNULL(el.username, 'Default User') = u.username
         LEFT JOIN Types t ON el.type = t.name
-        WHERE NOT EXISTS (
-            SELECT 1 FROM Categories c 
-            WHERE c.name = el.category 
+        JOIN Categories c ON el.category = c.name
             AND c.type_id = ISNULL(t.id, (SELECT TOP 1 id FROM Types WHERE name = 'Expense'))
             AND c.user_id = u.id
-        )
-    ) cat;
+        WHERE NOT EXISTS (SELECT 1 FROM Expenses e WHERE e.id = TRY_CAST(el.uuid AS UNIQUEIDENTIFIER));
 
-    -- C. Migrate records to new Expenses table mapping IDs
-    INSERT INTO Expenses (id, user_id, category_id, type_id, month, amount, sheet)
-    SELECT 
-        ISNULL(TRY_CAST(el.uuid AS UNIQUEIDENTIFIER), NEWID()),
-        u.id,
-        c.id,
-        ISNULL(t.id, (SELECT TOP 1 id FROM Types WHERE name = 'Expense')),
-        el.month,
-        el.amount,
-        el.sheet
-    FROM Expenses_Legacy el
-    JOIN Users u ON ISNULL(el.username, 'Default User') = u.username
-    LEFT JOIN Types t ON el.type = t.name
-    JOIN Categories c ON el.category = c.name 
-        AND c.type_id = ISNULL(t.id, (SELECT TOP 1 id FROM Types WHERE name = 'Expense'))
-        AND c.user_id = u.id
-    WHERE NOT EXISTS (SELECT 1 FROM Expenses e WHERE e.id = TRY_CAST(el.uuid AS UNIQUEIDENTIFIER));
+        PRINT 'Migration complete. Expenses_Legacy has been kept as a backup; drop it manually once the new schema is verified.'
+    END
 
-    PRINT 'Migration complete. Expenses_Legacy has been kept as a backup; drop it manually once the new schema is verified.'
+    INSERT INTO SchemaMigrations (name) VALUES (N'migrate.sql:legacy-import');
+    COMMIT TRANSACTION;
 END
 GO
