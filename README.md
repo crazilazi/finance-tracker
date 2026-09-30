@@ -13,7 +13,7 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 - **Input Validation**: All expense payloads and query parameters are validated server-side (month format, amount range, allow-listed types, GUID ids) and SQL errors are never returned to the browser.
 
 ### 📋 2. Copy Month Expense Template
-- **Template Cloner**: Select any historical month as a template, preview all entries, adjust individual amounts inline, select/deselect items, and save directly to a target month.
+- **Template Cloner**: Select any historical month as a template, preview all entries, adjust individual amounts inline, select/deselect items, and save directly to a target month. The copy is saved in one transaction, and it needs an unlocked tab: hidden or demo amounts are never copied as real ones.
 - **Maximize / Minimize Modal**: Toggle between standard width and full-screen preview to audit large monthly templates with ease.
 
 ### 📊 3. Income Tracking & Overlaid Comparison Charts
@@ -28,8 +28,9 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 
 ### 📑 5. Smart Bank Statement Reconciliation Wizard
 - **Excel & CSV Parsing**: Drag and drop bank statements (`.xlsx`, `.xls`, `.csv`) directly into the app. Powered by SheetJS (`xlsx` 0.20.x, installed from the official SheetJS CDN because the npm registry copy stopped at 0.18.5 and carries known advisories).
-- **AI-Like Normalization**: Automatically detects date, narration, and debit/credit columns, normalizes dates to `YYYY-MM`, and maps raw bank descriptions to existing expense categories via keyword fuzzy matching and NLP hints.
-- **Reconciliation Engine**: Classifies incoming statement rows into 🟢 **New Records**, 🟡 **Amount Mismatches**, and ⚪ **Synced** entries with inline editing and one-click bulk database synchronization.
+- **AI-Like Normalization**: Automatically detects date, narration, and debit/credit columns, normalizes dates to `YYYY-MM`, and maps raw bank descriptions to existing expense categories via keyword fuzzy matching and NLP hints. Numeric dates are read day-first as Indian banks print them (05/09/2026 is 5 September), and footer lines without a date, such as totals and balances, are skipped.
+- **One entry per category per month**: transactions that map to the same category, month and type are added together, so five food-delivery debits in September become one September Food entry with their total and all five narrations in its note.
+- **Reconciliation Engine**: Compares against every month the statement covers, not just the page open in the Data Table, and classifies rows into 🟢 **New Records**, 🟡 **Amount Mismatches**, and ⚪ **Synced** entries. Statuses update as you edit a row inline, and one click bulk-syncs the ticked rows. Reconciling needs an unlocked tab, since matching compares real amounts.
 
 ### 🗑️ 6. Bulk Operations & Data Table Filtering
 - **Multi-Row Checkbox Selection**: Select multiple records and delete them in a single batch operation (`Delete Selected (N)`).
@@ -67,7 +68,7 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 
 ### ⚡ 10. Monthly Routine Accelerators
 - **This Month checklist** on the Dashboard: your usual categories (recurring, or recorded in 4 of the last 6 months) with recorded vs missing, pre-filled suggested amounts, per-row **Add** and one-click **Fill all missing**.
-- **Category manager** (sidebar → Categories): rename, icon, type, recurring flag, default amount, budget, archive, and **merge duplicates** (case/punctuation variants are detected automatically).
+- **Category manager** (sidebar → Categories): rename, icon, type, recurring flag, default amount, budget, archive, and **merge duplicates** (case/punctuation variants are detected automatically). When both categories have an entry for the same month, the merge adds them into one entry, so category totals don't change.
 - **Smart filter** in the top bar works server-side across the table, charts and export: `>5000`, `1000-5000`, `2k-1.5l`, `type:emi`, `cat:loan`, `notes:swiggy`, `sheet:july`, plus free text.
 - **Inline editing** in the Data Table: click an amount, category, type or note to change it in place; Undo is one click away.
 - **Command palette** with `Ctrl/⌘+K`; hotkeys `N` (new expense), `/` (smart filter), `G` then `D/T/A/B/I/S/R/C/X` (jump to a tab), `Ctrl+Z` (undo).
@@ -146,6 +147,12 @@ node scripts/migrate-to-sql.js
 ```
 Re-run this after every pull that adds a file under `scripts/migrations/`. `004_unlock_revocations.sql` makes privacy locks durable across app instances, and `005_unlock_attempts.sql` adds the PIN attempt limit. Until 005 is applied, unlocking still works but PIN attempts are not limited, and the server logs an error saying so.
 
+`006_expense_unique_month_category.sql` makes the database enforce one entry per month and category. If older data already has two rows for the same month and category, the migration stops without changing anything. Review and resolve those rows, then run the migration again:
+```bash
+node scripts/dedupe-expenses.js          # list duplicates, change nothing
+node scripts/dedupe-expenses.js --fix    # per group: add together, keep one, or skip
+```
+
 **Legacy and seeded accounts.** Users created by the legacy migration or by `--seed` have no GitHub identity, and sign-in never links them automatically by username. Link one explicitly:
 ```bash
 node scripts/link-legacy-user.js --user-id <guid> --github-id <numeric id>
@@ -177,6 +184,7 @@ The application is specifically optimized for **Azure App Service Linux** using 
 1. **Azure Web App Setup**: Create an App Service running Node.js 22 LTS. Set the **Startup Command** to `node server.js` and add `PORT=8080` to your Application Settings, along with `DATABASE_URL`, `JWT_SECRET`, `APP_BASE_URL`, the GitHub OAuth settings, `ALLOWED_GITHUB_IDS` and `DEMO_SECRET`.
 2. **GitHub Actions**: The repository includes a ready-to-go `.github/workflows/develop_tracker.yml` CI/CD pipeline.
 3. **Artifact Zipping**: The workflow installs with `npm ci` on Node 22, builds the highly optimized `.next/standalone` directory, zips it locally on the build server to bypass Azure hidden-file strictness, and uses OIDC to deploy directly to your App Service.
+4. **Time zone**: Add the Application Setting `TZ=Asia/Kolkata`. App Service runs in UTC by default, which would make budgets, reminders and the This Month checklist switch months at 05:30 IST instead of midnight. Check it from the Kudu SSH console with `date`.
 
 ---
 

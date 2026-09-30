@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { Modal, Select, Table, Tag, Button, Card, Row, Col, Alert, Tooltip } from 'antd';
 import { SearchOutlined, AlertOutlined, CheckCircleOutlined, CopyOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
+import { apiFetch } from '../../../lib/apiClient';
 
 const { Option } = Select;
 
@@ -22,11 +23,14 @@ export default function MissingScannerModal({ open, onClose, onOpenCopyTemplate 
 
   // Fetch expense data for the selected year from API
   useEffect(() => {
-    if (!open) return;
-    fetch(`/api/expenses?filter=${selectedYear}&pageSize=500`, { credentials: 'same-origin' })
-      .then(r => r.json())
-      .then(result => setYearData(result.data || []))
-      .catch(() => setYearData([]));
+    if (!open) return undefined;
+    // The whole year (export=true is not capped at 500 rows). Only months and
+    // categories are used, so this works in every privacy mode.
+    let cancelled = false;
+    apiFetch(`/api/expenses?filter=${encodeURIComponent(selectedYear)}&export=true`)
+      .then(({ body }) => { if (!cancelled) setYearData(body?.data || []); })
+      .catch(() => { if (!cancelled) setYearData([]); });
+    return () => { cancelled = true; };
   }, [selectedYear, open]);
 
   // 1. All 12 month strings for selectedYear

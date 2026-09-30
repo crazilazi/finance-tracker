@@ -18,6 +18,7 @@ export default async function handler(req, res) {
     const result = await dbProvider.bulkSyncExpenses(dbConfig, value, ctx.user.user_id);
     res.status(200).json(result);
   } catch (err) {
+    if (err.status) { res.status(err.status).json({ error: err.message }); return; }
     sendServerError(res, err, 'POST /api/expenses/bulk');
   }
 }

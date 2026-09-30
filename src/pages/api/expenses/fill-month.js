@@ -30,6 +30,7 @@ export default async function handler(req, res) {
     const result = await dbProvider.bulkSyncExpenses(dbConfig, value.items, ctx.user.user_id, { insertOnly });
     res.status(200).json({ ...result, month: value.month });
   } catch (err) {
+    if (err.status) { res.status(err.status).json({ error: err.message }); return; }
     sendServerError(res, err, 'POST /api/expenses/fill-month');
   }
 }
