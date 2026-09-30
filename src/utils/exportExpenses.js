@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { apiFetch } from '../lib/apiClient';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -15,10 +16,10 @@ export function formatMonthLabel(m) {
  */
 export async function exportExpensesToExcel(params, fileName = 'GaddiTracker_Export.xlsx') {
   const search = new URLSearchParams({ ...params, export: 'true' });
-  const res = await fetch(`/api/expenses?${search.toString()}`, { credentials: 'same-origin' });
-  if (!res.ok) throw new Error(`Export failed (${res.status})`);
-  const result = await res.json();
-  if (!result.data) throw new Error('No data returned');
+  // apiFetch sends this tab's unlock grant; without it the rows would come back hidden or fake.
+  const { body: result } = await apiFetch(`/api/expenses?${search.toString()}`);
+  if (!result?.data) throw new Error('No data returned');
+  if (result.mode !== 'real') throw new Error('Unlock to export real amounts.');
 
   const ws = XLSX.utils.json_to_sheet(result.data.map(row => ({
     Month: formatMonthLabel(row.month),

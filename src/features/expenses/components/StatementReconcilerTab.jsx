@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Upload, Table, Tag, Button, Select, Input, InputNumber, Checkbox, Radio, App, Spin, Typography, Tooltip } from 'antd';
 import { InboxOutlined, RocketOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
-import { parseStatementFile } from '../../../utils/statementParser';
+import {
+  parseStatementRows, groupStatementRows, statementYears, reconcileWithDatabase,
+  indexLedger, classifyStatementRow, buildSyncPayload, syncProblem,
+} from '../../../utils/statementParser';
+import { apiFetch } from '../../../lib/apiClient';
 import { DARK } from '../../../components/ThemeProvider';
 import useViewport from '../../../hooks/useViewport';
 import { selectCan, setUnlockPromptOpen } from '../expensesSlice';
@@ -14,7 +18,6 @@ export default function StatementReconcilerTab() {
   const { message } = App.useApp();
   const dispatch = useDispatch();
   const allCategories = useSelector(state => state.expenses.analytics.allCategories);
-  const tableData = useSelector(state => state.expenses.tableData);
   const theme = useSelector(state => state.expenses.theme);
   const isDark = theme === 'dark';
   const c = isDark ? DARK : { BG_BASE: '#f9fafb', BG_CARD: '#ffffff', TEXT_BASE: '#1f2937', TEXT_MUTED: '#6b7280', BORDER: '#e5e7eb' };
@@ -24,25 +27,47 @@ export default function StatementReconcilerTab() {
   const knownCategories = allCategories;
 
   const [items, setItems] = useState([]);
+  // Ledger rows for every year the statement covers; statuses are computed against these
+  const [ledger, setLedger] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
   const [loading, setLoading] = useState(false);
 
+  /** All ledger rows for the given years, with real amounts, or null when this tab is not unlocked. */
+  const loadLedger = async (years) => {
+    const results = await Promise.all(years.map(y => apiFetch(`/api/expenses?filter=${encodeURIComponent(y)}&export=true`)));
+    if (results.some(r => r.body?.mode !== 'real')) return null;
+    return results.flatMap(r => r.body?.data || []);
+  };
+
+  const reconcileFile = async (buffer) => {
+    const { rows, skipped } = parseStatementRows(buffer, knownCategories);
+    if (rows.length === 0) throw new Error('No transactions with an amount were found.');
+    const groups = groupStatementRows(rows);
+    const existing = await loadLedger(statementYears(groups));
+    if (existing === null) { dispatch(setUnlockPromptOpen(true)); return; }
+    setLedger(existing);
+    setItems(reconcileWithDatabase(groups, existing));
+    const combined = rows.length !== groups.length ? ` into ${groups.length} monthly entries` : '';
+    const skippedNote = skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a date skipped` : '';
+    message.success(`Read ${rows.length} transactions${combined}${skippedNote}`);
+  };
+
   const handleFileUpload = (file) => {
+    // Comparing against the ledger needs real amounts, so unlock before reading the file
+    if (!can.edit) { dispatch(setUnlockPromptOpen(true)); return false; }
     setLoading(true);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        const buffer = e.target.result;
-        const reconciled = parseStatementFile(buffer, knownCategories, tableData);
-        setItems(reconciled);
-        message.success(`Parsed ${reconciled.length} statement rows successfully!`);
+        await reconcileFile(e.target.result);
       } catch (err) {
         console.error(err);
-        message.error(`Failed to parse statement: ${err.message}`);
+        message.error(`Failed to read statement: ${err.message}`);
       } finally {
         setLoading(false);
       }
     };
+    reader.onerror = () => { setLoading(false); message.error('Could not read the file.'); };
     reader.readAsArrayBuffer(file);
     return false; // prevent upload post
   };
@@ -54,20 +79,13 @@ export default function StatementReconcilerTab() {
       message.error('Please select at least one transaction to sync!');
       return;
     }
+    const problem = syncProblem(activeItems);
+    if (problem) { message.error(problem); return; }
 
-    const payloads = activeItems.map(item => ({
-      uuid: (item.status === 'mismatch' && item.existingItem) ? item.existingItem.uuid : undefined,
-      month: item.month,
-      category: item.category,
-      amount: parseFloat(item.amount) || 0,
-      type: item.type,
-      tags: item.description // map description to tags (notes)
-    }));
-
-    dispatch({ type: 'expenses/bulkSync', payload: payloads });
-
-    message.success(`Sent ${payloads.length} items to database! They are being bulk synced.`);
+    // Rows sharing a month, category and type are added together and saved once
+    dispatch({ type: 'expenses/bulkSync', payload: buildSyncPayload(activeItems) });
     setItems([]);
+    setLedger([]);
   };
 
   const handleFieldChange = (id, field, value) => {
@@ -82,17 +100,24 @@ export default function StatementReconcilerTab() {
     setItems(prev => prev.map(item => ({ ...item, checked })));
   };
 
+  // Statuses follow inline edits: changing a row's month, category, type or amount re-checks it
+  const ledgerIndex = useMemo(() => indexLedger(ledger), [ledger]);
+  const rowsWithStatus = useMemo(
+    () => items.map(item => ({ ...item, ...classifyStatementRow(item, ledgerIndex) })),
+    [items, ledgerIndex]
+  );
+
   // Filtered dataset for table view
-  const displayItems = items.filter(item => {
+  const displayItems = rowsWithStatus.filter(item => {
     if (activeFilter === 'new') return item.status === 'new';
     if (activeFilter === 'mismatch') return item.status === 'mismatch';
     if (activeFilter === 'synced') return item.status === 'synced';
     return true;
   });
 
-  const newCount = items.filter(i => i.status === 'new').length;
-  const mismatchCount = items.filter(i => i.status === 'mismatch').length;
-  const syncedCount = items.filter(i => i.status === 'synced').length;
+  const newCount = rowsWithStatus.filter(i => i.status === 'new').length;
+  const mismatchCount = rowsWithStatus.filter(i => i.status === 'mismatch').length;
+  const syncedCount = rowsWithStatus.filter(i => i.status === 'synced').length;
   const checkedCount = items.filter(i => i.checked).length;
 
   const columns = [
@@ -119,9 +144,15 @@ export default function StatementReconcilerTab() {
       dataIndex: 'status',
       key: 'status',
       width: 110,
-      render: (st) => {
+      render: (st, record) => {
         if (st === 'new') return <Tag color="green">🟢 New</Tag>;
-        if (st === 'mismatch') return <Tag color="gold">🟡 Conflict</Tag>;
+        if (st === 'mismatch') {
+          return (
+            <Tooltip title={`Recorded now: ₹${Math.round(Number(record.existingItem?.amount) || 0).toLocaleString('en-IN')}. Syncing replaces it with the statement total.`}>
+              <Tag color="gold">🟡 Conflict</Tag>
+            </Tooltip>
+          );
+        }
         return <Tag color="default">⚪ Ignored</Tag>;
       }
     },
@@ -133,8 +164,10 @@ export default function StatementReconcilerTab() {
       render: (val, record) => (
         <Input
           size="small"
-          value={val}
-          onChange={e => handleFieldChange(record.id, 'month', e.target.value)}
+          value={val || ''}
+          placeholder="YYYY-MM"
+          status={/^\d{4}-(0[1-9]|1[0-2])$/.test(val || '') ? undefined : 'error'}
+          onChange={e => handleFieldChange(record.id, 'month', e.target.value.trim())}
           style={{ width: '100%' }}
         />
       )
@@ -192,9 +225,12 @@ export default function StatementReconcilerTab() {
       dataIndex: 'description',
       key: 'description',
       ellipsis: { showTitle: false },
-      render: (desc) => (
+      render: (desc, record) => (
         <Tooltip title={desc} placement="topLeft">
-          <span className="text-xs text-gray-400">{desc}</span>
+          <span className="text-xs text-gray-400">
+            {record.count > 1 && <Tag style={{ marginRight: 6, fontSize: 10, lineHeight: '16px' }}>{record.count} txns</Tag>}
+            {desc}
+          </span>
         </Tooltip>
       )
     }
@@ -225,7 +261,7 @@ export default function StatementReconcilerTab() {
 
         {items.length > 0 && (
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end', width: isMobile ? '100%' : 'auto' }}>
-            <Button size={isMobile ? 'middle' : 'large'} icon={<DeleteOutlined />} onClick={() => setItems([])}>
+            <Button size={isMobile ? 'middle' : 'large'} icon={<DeleteOutlined />} onClick={() => { setItems([]); setLedger([]); }}>
               {isMobile ? 'Clear' : 'Clear Data'}
             </Button>
             <Button
@@ -269,7 +305,8 @@ export default function StatementReconcilerTab() {
                   {isMobile ? 'Tap to choose a statement file' : 'Drag & Drop Statement File'}
                 </Title>
                 <Text style={{ color: c.TEXT_MUTED }}>
-                  Supports Excel (.xlsx, .xls) and CSV files. The engine automatically detects debit/credit columns, amount fields, and normalizes dates.
+                  Supports Excel (.xlsx, .xls) and CSV files. Debit and credit columns are detected automatically, dates are read day-first (05/09/2026 is 5 Sep), and transactions in the same category and month are added together into one entry.
+                  {!can.edit && <><br /><b>Unlock first</b>: matching against your records needs the real amounts.</>}
                 </Text>
               </Upload.Dragger>
             </div>
@@ -288,7 +325,7 @@ export default function StatementReconcilerTab() {
                   size={isMobile ? 'small' : 'middle'}
                   style={{ display: 'flex', flexWrap: 'wrap' }}
                 >
-                  <Radio.Button value="all">All ({items.length})</Radio.Button>
+                  <Radio.Button value="all">All ({rowsWithStatus.length})</Radio.Button>
                   <Radio.Button value="new">🟢 New ({newCount})</Radio.Button>
                   <Radio.Button value="mismatch">🟡 {isMobile ? '' : 'Conflicts '}({mismatchCount})</Radio.Button>
                   <Radio.Button value="synced">⚪ {isMobile ? '' : 'Ignored '}({syncedCount})</Radio.Button>

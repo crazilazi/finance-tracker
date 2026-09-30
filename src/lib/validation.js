@@ -66,6 +66,11 @@ export function validateExpense(body) {
   const category = cleanString(body.category, 100);
   if (!category) return { error: 'category is required' };
 
+  // Number(null) and Number('') are both 0, so check for a missing amount first:
+  // a hidden or blank amount must never be stored as ₹0. An explicit 0 is valid.
+  if (body.amount === null || body.amount === undefined || (typeof body.amount === 'string' && body.amount.trim() === '')) {
+    return { error: 'amount is required' };
+  }
   const amount = Number(body.amount);
   if (!Number.isFinite(amount) || amount < 0 || amount > MAX_AMOUNT) {
     return { error: 'amount must be a non-negative number' };

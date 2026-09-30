@@ -334,7 +334,8 @@ export const mergeCategoriesEpic = (action$) =>
     mergeMap(action =>
       from(apiFetch('/api/master/categories/merge', { method: 'POST', body: JSON.stringify(action.payload) })).pipe(
         mergeMap(({ body }) => of(...categoryRefresh(
-          `Merged ${body?.removed?.length || 0} categories into "${body?.target?.name || 'target'}" (${body?.moved || 0} rows moved)`
+          `Merged ${body?.removed?.length || 0} categories into "${body?.target?.name || 'target'}" (${body?.moved || 0} rows moved`
+          + `${body?.combined ? `, ${body.combined} same-month ${body.combined === 1 ? 'entry' : 'entries'} added together` : ''})`
         ))),
         catchError(failure)
       )

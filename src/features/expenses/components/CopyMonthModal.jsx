@@ -1,49 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Modal, Select, Input, Checkbox, Table, Button, Form, message } from 'antd';
-import { FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
+import { Modal, Select, Input, Checkbox, Table, Button, Alert, message } from 'antd';
+import { FullscreenOutlined, FullscreenExitOutlined, UnlockOutlined } from '@ant-design/icons';
+import { apiFetch } from '../../../lib/apiClient';
+import { setUnlockPromptOpen } from '../expensesSlice';
 
 const { Option } = Select;
 
 export default function CopyMonthModal({ open, onClose }) {
   const dispatch = useDispatch();
   const analytics = useSelector(state => state.expenses.analytics);
-  const tableData = useSelector(state => state.expenses.tableData);
+  const privacyMode = useSelector(state => state.expenses.privacy.mode);
   const theme = useSelector(state => state.expenses.theme);
   const isDark = theme === 'dark';
 
   const [sourceMonth, setSourceMonth] = useState(null);
   const [targetMonth, setTargetMonth] = useState('');
   const [items, setItems] = useState([]);
+  // True when the source month came back without real amounts (hidden or demo mode)
+  const [sourceLocked, setSourceLocked] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
 
   // Extract unique months from analytics.months (server provided)
   const uniqueMonths = [...(analytics.months || [])].sort().reverse();
 
-  // Populate items when source month changes
-  // Note: tableData only has current page — so we do a direct API call for the source month
+  // Load the whole source month. apiFetch sends this tab's unlock grant, so an
+  // unlocked tab gets real amounts. Hidden or demo amounts are never offered for
+  // copying: they would be saved as ₹0 or as fake numbers. Reloads on lock/unlock.
   useEffect(() => {
-    if (sourceMonth) {
-      fetch(`/api/expenses?filter=${sourceMonth}&pageSize=200`, { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(result => {
-          setItems(
-            (result.data || []).map((d, idx) => ({
-              key: idx,
-              id: idx,
-              category: d.category,
-              amount: d.amount,
-              type: d.type,
-              sheet: d.sheet,
-              checked: true,
-            }))
-          );
-        })
-        .catch(() => setItems([]));
-    } else {
-      setItems([]);
-    }
-  }, [sourceMonth]);
+    if (!sourceMonth) { setItems([]); setSourceLocked(false); return undefined; }
+    let cancelled = false;
+    apiFetch(`/api/expenses?filter=${encodeURIComponent(sourceMonth)}&export=true`)
+      .then(({ body }) => {
+        if (cancelled) return;
+        const rows = body?.data || [];
+        const locked = body?.mode !== 'real' || rows.some(r => r.amount === null || r.amount === undefined);
+        setSourceLocked(locked);
+        setItems(locked ? [] : rows.map((d, idx) => ({
+          key: idx,
+          id: idx,
+          category: d.category,
+          amount: d.amount,
+          type: d.type,
+          sheet: d.sheet,
+          checked: true,
+        })));
+      })
+      .catch(() => { if (!cancelled) { setItems([]); setSourceLocked(false); } });
+    return () => { cancelled = true; };
+  }, [sourceMonth, privacyMode]);
 
   // Handle saving
   const handleSave = () => {
@@ -67,21 +72,27 @@ export default function CopyMonthModal({ open, onClose }) {
       return;
     }
 
-    // Dispatch individual createExpense for each selected item
-    activeItems.forEach(item => {
-      dispatch({
-        type: 'expenses/createExpense',
-        payload: {
-          category: item.category,
-          amount: parseFloat(item.amount) || 0,
-          type: item.type,
-          sheet: item.sheet,
-          month: targetMonth,
-        },
-      });
-    });
+    const blank = activeItems.find(item => item.amount === null || item.amount === undefined || String(item.amount).trim() === ''
+      || !Number.isFinite(Number(item.amount)) || Number(item.amount) < 0);
+    if (blank) {
+      message.error(`Enter an amount for ${blank.category}, or untick it`);
+      return;
+    }
 
-    message.success(`Copied template to ${targetMonth} successfully!`);
+    // One request, one transaction: either the whole template is copied or none of it.
+    // The fill-month epic reports how many entries were added.
+    dispatch({
+      type: 'expenses/fillMonth',
+      payload: {
+        month: targetMonth,
+        items: activeItems.map(item => ({
+          category: item.category,
+          amount: Number(item.amount),
+          type: item.type,
+          sheet: item.sheet || undefined,
+        })),
+      },
+    });
     onClose();
   };
 
@@ -228,7 +239,18 @@ export default function CopyMonthModal({ open, onClose }) {
           </div>
         </div>
 
-        {sourceMonth && (
+        {sourceMonth && sourceLocked && (
+          <Alert
+            type="info"
+            showIcon
+            icon={<UnlockOutlined />}
+            title={privacyMode === 'demo' ? 'Demo data is showing, so there are no real amounts to copy.' : 'Amounts are hidden, so there is nothing to copy yet.'}
+            description="Unlock this tab to load the real amounts for the source month."
+            action={<Button size="small" type="primary" onClick={() => dispatch(setUnlockPromptOpen(true))}>Unlock</Button>}
+          />
+        )}
+
+        {sourceMonth && !sourceLocked && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#f3f4f6' : '#1f2937' }}>

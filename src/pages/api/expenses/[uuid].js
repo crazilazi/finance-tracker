@@ -20,6 +20,8 @@ export default async function handler(req, res) {
       if (!result.updated) { res.status(404).json({ error: 'Expense not found' }); return; }
       res.status(200).json(result);
     } catch (err) {
+      // 409: the edit would give one month and category two rows
+      if (err.status) { res.status(err.status).json({ error: err.message }); return; }
       sendServerError(res, err, 'PUT /api/expenses/[uuid]');
     }
     return;

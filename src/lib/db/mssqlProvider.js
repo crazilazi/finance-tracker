@@ -445,6 +445,13 @@ export async function getMonthSummary(config, month, userId, privacy = REAL) {
 
 const UNIQUE_VIOLATION = new Set([2601, 2627]);
 
+const isUniqueViolation = (err) => UNIQUE_VIOLATION.has(err?.number ?? err?.originalError?.info?.number);
+
+/** 409 for an edit that would give one (month, category) two rows. */
+function duplicateEntryError(item) {
+  return httpError(409, `There is already an entry for ${item.category} in ${item.month}. Edit that entry instead, or delete it first.`);
+}
+
 /**
  * Resolve (and lazily create) the Types / Categories rows for an expense.
  * `executor` is either a ConnectionPool or a Transaction so that the lookups
@@ -524,7 +531,10 @@ async function upsertByMonthCategory(executor, item, typeId, catId, userId, { in
 
   const res = await req.query(`
     DECLARE @existingId UNIQUEIDENTIFIER;
-    SELECT TOP 1 @existingId = id FROM Expenses WHERE month = @month AND category_id = @cid AND user_id = @userId;
+    -- UPDLOCK + HOLDLOCK: concurrent upserts of the same (user, month, category)
+    -- serialise here instead of both inserting (see migration 006).
+    SELECT TOP 1 @existingId = id FROM Expenses WITH (UPDLOCK, HOLDLOCK)
+    WHERE month = @month AND category_id = @cid AND user_id = @userId;
 
     IF @existingId IS NOT NULL
     BEGIN
@@ -599,11 +609,17 @@ export async function createExpense(config, item, userId, { insertOnly = false }
 
 export async function updateExpense(config, uuid, item, userId) {
   const pool = await getPool(config);
-  const updated = await withTransaction(pool, async (tx) => {
-    const { typeId, catId } = await resolveRelations(tx, item.category, item.type, userId);
-    return updateOwnedExpense(tx, uuid, item, typeId, catId, userId);
-  });
-  return { success: updated, updated };
+  try {
+    const updated = await withTransaction(pool, async (tx) => {
+      const { typeId, catId } = await resolveRelations(tx, item.category, item.type, userId);
+      return updateOwnedExpense(tx, uuid, item, typeId, catId, userId);
+    });
+    return { success: updated, updated };
+  } catch (err) {
+    // Moving a row onto a month and category that already has one
+    if (isUniqueViolation(err)) throw duplicateEntryError(item);
+    throw err;
+  }
 }
 
 export async function deleteExpense(config, uuid, userId) {
@@ -628,18 +644,25 @@ export async function bulkSyncExpenses(config, items, userId, { insertOnly = fal
   let merged = 0;
   let skipped = 0;
 
-  await withTransaction(pool, async (tx) => {
-    for (const item of items) {
-      const { typeId, catId } = await resolveRelations(tx, item.category, item.type, userId);
-      if (item.uuid && !insertOnly) {
-        const ok = await updateOwnedExpense(tx, item.uuid, item, typeId, catId, userId);
-        if (ok) { updated++; continue; }
+  let current = null;
+  try {
+    await withTransaction(pool, async (tx) => {
+      for (const item of items) {
+        current = item;
+        const { typeId, catId } = await resolveRelations(tx, item.category, item.type, userId);
+        if (item.uuid && !insertOnly) {
+          const ok = await updateOwnedExpense(tx, item.uuid, item, typeId, catId, userId);
+          if (ok) { updated++; continue; }
+        }
+        const result = await upsertByMonthCategory(tx, { ...item, uuid: undefined }, typeId, catId, userId, { insertOnly });
+        if (result === null) skipped++;
+        else merged++;
       }
-      const result = await upsertByMonthCategory(tx, { ...item, uuid: undefined }, typeId, catId, userId, { insertOnly });
-      if (result === null) skipped++;
-      else merged++;
-    }
-  });
+    });
+  } catch (err) {
+    if (isUniqueViolation(err) && current) throw duplicateEntryError(current);
+    throw err;
+  }
 
   return { success: true, updated, merged, skipped };
 }
@@ -961,21 +984,55 @@ export async function mergeCategories(config, sourceIds, targetId, userId) {
     if (!target) throw httpError(404, 'Target category not found');
 
     let moved = 0;
+    let combined = 0;
     const removed = [];
     for (const sourceId of sourceIds) {
       const source = await getCategoryById(tx, sourceId, userId);
       if (!source) throw httpError(404, `Source category ${sourceId} not found`);
 
+      // Months where both categories have a row are combined into the target's
+      // row (amounts added, notes joined) so category totals are unchanged and no
+      // month ends up with two rows for one category. Other rows simply move.
       const mv = new mssql.Request(tx);
       mv.input('source', mssql.UniqueIdentifier, sourceId);
       mv.input('target', mssql.UniqueIdentifier, targetId);
       mv.input('typeId', mssql.UniqueIdentifier, target.type_id);
       mv.input('userId', mssql.UniqueIdentifier, userId);
       const res = await mv.query(`
+        -- Counted up front, so the numbers do not depend on @@ROWCOUNT after the audit trigger fires
+        DECLARE @combined INT = (
+          SELECT COUNT(*) FROM Expenses s
+          WHERE s.category_id = @source AND s.user_id = @userId
+            AND EXISTS (SELECT 1 FROM Expenses t WHERE t.category_id = @target AND t.user_id = @userId AND t.month = s.month)
+        );
+
+        UPDATE t
+        SET t.amount = t.amount + s.total,
+            t.notes = LEFT(CASE
+              WHEN ISNULL(t.notes, N'') = N'' THEN s.notes
+              WHEN ISNULL(s.notes, N'') = N'' THEN t.notes
+              ELSE t.notes + N' | ' + s.notes END, 500)
+        FROM Expenses t
+        JOIN (
+          SELECT month, SUM(amount) AS total, MAX(notes) AS notes
+          FROM Expenses WHERE category_id = @source AND user_id = @userId
+          GROUP BY month
+        ) s ON s.month = t.month
+        WHERE t.category_id = @target AND t.user_id = @userId;
+
+        DELETE s FROM Expenses s
+        WHERE s.category_id = @source AND s.user_id = @userId
+          AND EXISTS (SELECT 1 FROM Expenses t WHERE t.category_id = @target AND t.user_id = @userId AND t.month = s.month);
+
+        DECLARE @movedRows INT = (SELECT COUNT(*) FROM Expenses WHERE category_id = @source AND user_id = @userId);
         UPDATE Expenses SET category_id = @target, type_id = @typeId
-        WHERE category_id = @source AND user_id = @userId
+        WHERE category_id = @source AND user_id = @userId;
+
+        SELECT @combined AS combined, @movedRows AS moved;
       `);
-      moved += res.rowsAffected[0] || 0;
+      const counts = res.recordset?.[0] || {};
+      moved += (counts.moved || 0) + (counts.combined || 0);
+      combined += counts.combined || 0;
 
       // Goals and loans pointing at the source follow it to the target
       const relink = new mssql.Request(tx);
@@ -994,7 +1051,7 @@ export async function mergeCategories(config, sourceIds, targetId, userId) {
       removed.push(source.name);
     }
 
-    return { success: true, moved, removed, target: await getCategoryById(tx, targetId, userId) };
+    return { success: true, moved, combined, removed, target: await getCategoryById(tx, targetId, userId) };
   });
 }
 
