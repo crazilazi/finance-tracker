@@ -79,6 +79,38 @@ const REAL = { mode: 'real', demoKey: '', maskCategoryNames: false };
 const num = (v) => (v === null || v === undefined ? null : parseFloat(v));
 const shiftMonth = (month, delta) => addMonths(month, delta);
 
+// ---- Paid state ---------------------------------------------------------------
+//
+// Expenses.paid_at: NULL = pending, a timestamp = paid (received / transferred).
+// @paidMode on writes: 0 = no explicit choice, 1 = paid, 2 = pending.
+
+const paidModeOf = (item) => (item.paid === true ? 1 : item.paid === false ? 2 : 0);
+
+/** paid_at for a new row: explicit choice, else past months paid (at month end) and others pending. */
+const INSERT_PAID_AT = `CASE @paidMode
+    WHEN 1 THEN SYSUTCDATETIME()
+    WHEN 2 THEN NULL
+    ELSE CASE WHEN @month < @currentMonth THEN CAST(EOMONTH(CAST(@month + '-01' AS DATE)) AS DATETIME2) END
+  END`;
+
+/** paid_at for an existing row: only an explicit choice changes it. */
+const UPDATE_PAID_AT = `CASE @paidMode
+    WHEN 1 THEN COALESCE(paid_at, SYSUTCDATETIME())
+    WHEN 2 THEN NULL
+    ELSE paid_at
+  END`;
+
+function bindPaid(req, item) {
+  req.input('paidMode', mssql.TinyInt, paidModeOf(item));
+  req.input('currentMonth', mssql.VarChar(7), currentMonthStr());
+}
+
+/** paidAt (ISO string or null) and paid (boolean) on a row read with `e.paid_at AS paidAt`. */
+const withPaid = (r) => {
+  const paidAt = r.paidAt ? new Date(r.paidAt).toISOString() : null;
+  return { ...r, paidAt, paid: paidAt !== null };
+};
+
 // ---- Privacy-aware amount expression --------------------------------------------
 
 /**
@@ -169,6 +201,9 @@ function buildWhere(req, opts, privacy = REAL) {
     } else if (sq.notes || sq.sheet) {
       conditions.push('1 = 0');
     }
+    // Paid state reveals no amount, so it filters in every privacy mode
+    if (sq.status === 'paid') conditions.push('e.paid_at IS NOT NULL');
+    else if (sq.status === 'pending') conditions.push('e.paid_at IS NULL');
     if (sq.text) {
       req.input('sqText', mssql.NVarChar(220), `%${sq.text}%`);
       conditions.push(real
@@ -219,7 +254,7 @@ export async function getExpensesPaginated(config, params, userId, privacy = REA
   const safeDir = sortDir === 'asc' ? 'ASC' : 'DESC';
 
   const dataResult = await req.query(`
-    SELECT e.id as uuid, e.month, c.name as category, ${AMT} as amount, t.name as type, e.notes as tags, e.sheet
+    SELECT e.id as uuid, e.month, c.name as category, ${AMT} as amount, t.name as type, e.notes as tags, e.sheet, e.paid_at AS paidAt
     ${EXPENSE_FROM}
     WHERE ${whereClause}
     ORDER BY ${safeCol} ${safeDir}, e.id
@@ -230,7 +265,7 @@ export async function getExpensesPaginated(config, params, userId, privacy = REA
   const countWhere = buildWhere(countReq, whereOpts, privacy);
   const countResult = await countReq.query(`SELECT COUNT(*) AS total ${EXPENSE_FROM} WHERE ${countWhere}`);
 
-  let data = dataResult.recordset;
+  let data = dataResult.recordset.map(withPaid);
   if (privacy.mode === 'hidden') data = hideRows(data);
   else if (privacy.mode === 'demo') data = data.map(r => ({ ...r, tags: null, sheet: null }));
 
@@ -378,10 +413,10 @@ export async function getMonthSummary(config, month, userId, privacy = REAL) {
   recordedReq.input('month', mssql.VarChar(7), month);
   const AMT1 = amountExpr(recordedReq, privacy);
   const recorded = (await recordedReq.query(`
-    SELECT e.id AS uuid, c.id AS category_id, c.name AS category, t.name AS type, ${AMT1} AS amount, e.notes
+    SELECT e.id AS uuid, c.id AS category_id, c.name AS category, t.name AS type, ${AMT1} AS amount, e.notes, e.paid_at AS paidAt
     ${EXPENSE_FROM}
     WHERE e.user_id = @userId AND e.month = @month
-  `)).recordset;
+  `)).recordset.map(withPaid);
 
   const lastReq = pool.request();
   lastReq.input('userId', mssql.UniqueIdentifier, userId);
@@ -403,7 +438,7 @@ export async function getMonthSummary(config, month, userId, privacy = REAL) {
   const recordedByCategory = {};
   for (const row of recorded) {
     const key = String(row.category_id).toLowerCase();
-    if (!recordedByCategory[key]) recordedByCategory[key] = { uuid: row.uuid, amount: parseFloat(row.amount), notes: row.notes };
+    if (!recordedByCategory[key]) recordedByCategory[key] = { uuid: row.uuid, amount: parseFloat(row.amount), notes: row.notes, paid: row.paid, paidAt: row.paidAt };
   }
 
   const items = usual.map(c => {
@@ -415,6 +450,7 @@ export async function getMonthSummary(config, month, userId, privacy = REAL) {
       categoryId: c.id, category: c.name, type: c.type, icon: c.icon, color: c.color,
       isRecurring: !!c.is_recurring, budget: num(c.budget_amount),
       recorded: !!rec, uuid: rec?.uuid || null, amount: rec ? rec.amount : null,
+      paid: rec ? rec.paid : false, paidAt: rec ? rec.paidAt : null,
       lastAmount: last ? last.amount : null, lastMonth: last ? last.month : null,
       suggestedAmount: defaultAmount ?? (last ? last.amount : null),
     };
@@ -425,7 +461,10 @@ export async function getMonthSummary(config, month, userId, privacy = REAL) {
   const missing = items.filter(i => !i.recorded);
   const extras = recorded
     .filter(r => !usual.some(c => String(c.id).toLowerCase() === String(r.category_id).toLowerCase()))
-    .map(r => ({ category: r.category, type: r.type, amount: parseFloat(r.amount), uuid: r.uuid }));
+    .map(r => ({ category: r.category, type: r.type, amount: parseFloat(r.amount), uuid: r.uuid, paid: r.paid, paidAt: r.paidAt }));
+
+  const pendingRows = recorded.filter(r => !r.paid);
+  const sumOf = (rows) => rows.reduce((s, r) => s + parseFloat(r.amount), 0);
 
   let summary = {
     month, items, extras,
@@ -435,6 +474,10 @@ export async function getMonthSummary(config, month, userId, privacy = REAL) {
     missingSuggestedTotal: missing.reduce((s, i) => s + (i.suggestedAmount || 0), 0),
     monthTotal, monthIncome,
     recordedRows: recorded.length,
+    paidCount: recorded.length - pendingRows.length,
+    pendingCount: pendingRows.length,
+    pendingOutflow: sumOf(pendingRows.filter(r => r.type !== 'Income')),
+    pendingIncome: sumOf(pendingRows.filter(r => r.type === 'Income')),
   };
   if (privacy.mode === 'hidden') summary = hideSummary(summary);
   else if (privacy.mode === 'demo') summary = demoSummaryConfig(summary, privacy.demoKey);
@@ -528,6 +571,7 @@ async function upsertByMonthCategory(executor, item, typeId, catId, userId, { in
   req.input('sheet', mssql.NVarChar(100), item.sheet || null);
   req.input('userId', mssql.UniqueIdentifier, userId);
   req.input('insertOnly', mssql.Bit, insertOnly ? 1 : 0);
+  bindPaid(req, item);
 
   const res = await req.query(`
     DECLARE @existingId UNIQUEIDENTIFIER;
@@ -540,14 +584,14 @@ async function upsertByMonthCategory(executor, item, typeId, catId, userId, { in
     BEGIN
       IF @insertOnly = 0
         UPDATE Expenses
-        SET amount = @amount, type_id = @tid, notes = @notes, sheet = @sheet
+        SET amount = @amount, type_id = @tid, notes = @notes, sheet = @sheet, paid_at = ${UPDATE_PAID_AT}
         WHERE id = @existingId;
       SELECT @existingId AS finalUuid, CAST(1 AS BIT) AS existed;
     END
     ELSE
     BEGIN
-      INSERT INTO Expenses (id, month, category_id, amount, type_id, notes, sheet, user_id)
-      VALUES (@id, @month, @cid, @amount, @tid, @notes, @sheet, @userId);
+      INSERT INTO Expenses (id, month, category_id, amount, type_id, notes, sheet, user_id, paid_at)
+      VALUES (@id, @month, @cid, @amount, @tid, @notes, @sheet, @userId, ${INSERT_PAID_AT});
       SELECT @id AS finalUuid, CAST(0 AS BIT) AS existed;
     END
   `);
@@ -568,9 +612,12 @@ async function updateOwnedExpense(executor, uuid, item, typeId, catId, userId) {
   req.input('sheet', mssql.NVarChar(100), item.sheet || null);
   req.input('userId', mssql.UniqueIdentifier, userId);
 
+  bindPaid(req, item);
+
   const res = await req.query(`
     UPDATE Expenses
-    SET month = @month, category_id = @cid, amount = @amount, type_id = @tid, notes = @notes, sheet = @sheet
+    SET month = @month, category_id = @cid, amount = @amount, type_id = @tid, notes = @notes, sheet = @sheet,
+        paid_at = ${UPDATE_PAID_AT}
     WHERE id = @id AND user_id = @userId
   `);
   return (res.rowsAffected[0] || 0) > 0;
@@ -630,6 +677,37 @@ export async function deleteExpense(config, uuid, userId) {
   const res = await req.query('DELETE FROM Expenses WHERE id = @id AND user_id = @userId');
   const deleted = (res.rowsAffected[0] || 0) > 0;
   return { success: deleted, deleted };
+}
+
+/**
+ * Marks rows paid or pending. items: [{ uuid, paid, paidAt? }] (validated).
+ * Marking an already-paid row paid keeps its date unless paidAt is given
+ * (undo restores the original date that way). Rows that would not change,
+ * and rows owned by someone else, are left alone.
+ * Returns { updated, changes: [{ uuid, previous, current }] } with ISO dates or null.
+ */
+export async function setExpensesPaid(config, items, userId) {
+  const pool = await getPool(config);
+  const req = pool.request();
+  req.input('userId', mssql.UniqueIdentifier, userId);
+  req.input('items', mssql.NVarChar(mssql.MAX), JSON.stringify(items.map(i => ({ id: i.uuid, paid: i.paid ? 1 : 0, paidAt: i.paidAt || null }))));
+  const res = await req.query(`
+    DECLARE @changes TABLE (id UNIQUEIDENTIFIER, previous DATETIME2 NULL, current_ DATETIME2 NULL);
+
+    UPDATE e
+    SET e.paid_at = CASE WHEN j.paid = 1 THEN COALESCE(j.paidAt, e.paid_at, SYSUTCDATETIME()) END
+    OUTPUT inserted.id, deleted.paid_at, inserted.paid_at INTO @changes
+    FROM Expenses e
+    JOIN OPENJSON(@items) WITH (id UNIQUEIDENTIFIER '$.id', paid BIT '$.paid', paidAt DATETIME2 '$.paidAt') j ON j.id = e.id
+    WHERE e.user_id = @userId
+      AND NOT (j.paid = 1 AND j.paidAt IS NULL AND e.paid_at IS NOT NULL)
+      AND NOT (j.paid = 0 AND e.paid_at IS NULL);
+
+    SELECT id, previous, current_ FROM @changes;
+  `);
+  const iso = (d) => (d ? new Date(d).toISOString() : null);
+  const changes = res.recordset.map(r => ({ uuid: r.id, previous: iso(r.previous), current: iso(r.current_) }));
+  return { updated: changes.length, changes };
 }
 
 /**
@@ -1327,10 +1405,10 @@ export async function getReminders(config, userId, privacy = REAL) {
   rowsReq.input('userId', mssql.UniqueIdentifier, userId);
   const AMT = amountExpr(rowsReq, privacy);
   const rows = (await rowsReq.query(`
-    SELECT c.id AS categoryId, c.name AS category, e.month, ${AMT} AS amount
+    SELECT e.id AS uuid, c.id AS categoryId, c.name AS category, t.name AS type, e.month, ${AMT} AS amount, e.paid_at AS paidAt
     ${EXPENSE_FROM}
     WHERE e.user_id = @userId AND c.archived = 0
-  `)).recordset.map(r => ({ ...r, amount: num(r.amount) }));
+  `)).recordset.map(r => withPaid({ ...r, amount: num(r.amount) }));
 
   const catReq = pool.request();
   catReq.input('userId', mssql.UniqueIdentifier, userId);
@@ -1347,10 +1425,12 @@ export async function getReminders(config, userId, privacy = REAL) {
     const k = String(r.categoryId).toLowerCase();
     if (!lastByCat[k] || lastByCat[k].month < r.month) lastByCat[k] = { month: r.month, amount: r.amount };
   }
+  const paidCardsThisMonth = new Set(rows.filter(r => r.month === now && r.paid).map(r => String(r.categoryId).toLowerCase()));
   const cards = cats.filter(c => c.card_due_day).map(c => {
     const due = nextDueDate(c.card_due_day, today);
     const last = lastByCat[String(c.id).toLowerCase()];
     return {
+      paidThisMonth: paidCardsThisMonth.has(String(c.id).toLowerCase()),
       categoryId: c.id, category: c.name, icon: c.icon,
       dueDay: c.card_due_day, statementDay: c.card_statement_day || null,
       dueDate: localDate(due), daysUntil: daysUntil(due, today),
@@ -1361,17 +1441,27 @@ export async function getReminders(config, userId, privacy = REAL) {
   const budgets = (await getBudgetStatus(pool, userId, now, privacy)).filter(b => b.pct >= 80);
 
   const iconByName = Object.fromEntries(cats.map(c => [c.name, c.icon]));
+
+  // This month's rows still to pay (Income is "expected", not due), EMI first
+  const TYPE_ORDER = { EMI: 0, Expense: 1, Saving: 2 };
+  const unpaid = rows
+    .filter(r => r.month === now && !r.paid && r.type !== 'Income')
+    .map(r => ({ uuid: r.uuid, categoryId: r.categoryId, category: r.category, type: r.type, month: r.month, amount: r.amount, icon: iconByName[r.category] || null }))
+    .sort((a, b) => (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9) || a.category.localeCompare(b.category));
+
   let out = {
     asOf: localDate(today),
     yearly: yearly.map(y => ({ ...y, icon: iconByName[y.category] || null })),
     cards,
     budgets,
+    unpaid,
   };
   if (privacy.mode === 'hidden') {
     out = {
       ...out,
       yearly: out.yearly.map(y => ({ ...y, lastAmount: null })),
       cards: out.cards.map(c => ({ ...c, lastAmount: null })),
+      unpaid: out.unpaid.map(u => ({ ...u, amount: null })),
       budgets: out.budgets.map(b => ({ ...b, spent: null, budget: null })),
     };
   }

@@ -23,6 +23,7 @@ import {
   setAnalyticsCacheEntry,
   invalidateCache,
   pushUndoEntry,
+  applyPaidLocally,
   setLastError,
   setLastNotice,
   makeTableCacheKey,
@@ -243,11 +244,61 @@ export const undoEpic = (action$, state$) =>
       if (last.action === 'create') request = apiFetch(`/api/expenses/${last.uuid}`, { method: 'DELETE' });
       else if (last.action === 'delete') request = apiFetch('/api/expenses', { method: 'POST', body: JSON.stringify(last.snapshot) });
       else if (last.action === 'update') request = apiFetch(`/api/expenses/${last.uuid}`, { method: 'PUT', body: JSON.stringify(last.snapshot) });
+      else if (last.action === 'paid') {
+        // Restore each row's previous state, including its original paid date
+        const items = last.previous.map(p => (p.paidAt ? { uuid: p.uuid, paid: true, paidAt: p.paidAt } : { uuid: p.uuid, paid: false }));
+        return concat(
+          of(applyPaidLocally(items)),
+          from(apiFetch('/api/expenses/paid', { method: 'POST', body: JSON.stringify({ items }) })).pipe(
+            mergeMap(() => of({ type: 'expenses/popUndoEntry' }, setLastNotice('Undone'), ...paidRefresh())),
+            catchError(err => concat(failure(err), of(...paidRefresh())))
+          )
+        );
+      }
       else return EMPTY;
 
       return from(request).pipe(
         mergeMap(() => of({ type: 'expenses/popUndoEntry' }, setLastNotice('Undone'), ...refreshAll())),
         catchError(failure)
+      );
+    })
+  );
+
+// ── Paid state ───────────────────────────────────────────────────────────────
+
+/** Paid state changes no totals, so only lists that show it are reloaded. */
+const paidRefresh = () => [
+  invalidateCache(),
+  { type: 'expenses/fetchTableData' },
+  { type: 'expenses/fetchSummary' },
+  { type: 'expenses/fetchReminders' },
+];
+
+/**
+ * payload: { items: [{ uuid, paid }], notice?, undoable = true }
+ * Updates the screen at once, then saves; on failure the refetch puts the
+ * real state back. Changed rows are pushed as one undo entry.
+ */
+export const setPaidEpic = (action$) =>
+  action$.pipe(
+    ofType('expenses/setPaid'),
+    mergeMap(action => {
+      const { items = [], notice, undoable = true } = action.payload || {};
+      if (items.length === 0) return EMPTY;
+      return concat(
+        of(applyPaidLocally(items)),
+        from(apiFetch('/api/expenses/paid', { method: 'POST', body: JSON.stringify({ items }) })).pipe(
+          mergeMap(({ body }) => {
+            const changes = body?.changes || [];
+            const previous = changes.map(c => ({ uuid: c.uuid, paidAt: c.previous }));
+            return of(
+              ...(undoable && previous.length > 0 ? [pushUndoEntry({ action: 'paid', previous })] : []),
+              ...(notice ? [setLastNotice(notice)] : []),
+              ...paidRefresh(),
+            );
+          }),
+          catchError(err => concat(failure(err), of(...paidRefresh())))
+        )
       );
     })
   );

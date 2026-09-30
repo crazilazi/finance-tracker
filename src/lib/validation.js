@@ -82,6 +82,12 @@ export function validateExpense(body) {
   const hasUuid = body.uuid !== undefined && body.uuid !== null && body.uuid !== '';
   if (hasUuid && !isGuid(body.uuid)) return { error: 'uuid must be a valid GUID' };
 
+  // Optional paid state. Absent means "leave it as it is" on updates, and the
+  // month-based default on inserts (past months paid, others pending).
+  if (body.paid !== undefined && body.paid !== null && typeof body.paid !== 'boolean') {
+    return { error: 'paid must be true or false' };
+  }
+
   return {
     value: {
       uuid: hasUuid ? body.uuid : undefined,
@@ -91,8 +97,38 @@ export function validateExpense(body) {
       type,
       tags: cleanString(body.tags, 500) || null,
       sheet: cleanString(body.sheet, 100) || null,
+      paid: typeof body.paid === 'boolean' ? body.paid : undefined,
     },
   };
+}
+
+/**
+ * Body of POST /api/expenses/paid: { items: [{ uuid, paid, paidAt? }] }.
+ * paidAt (ISO date) is only accepted with paid: true; undo uses it to restore
+ * the original date. Later entries for the same uuid win.
+ */
+export function validatePaidItems(body, max = 500) {
+  if (!body || typeof body !== 'object' || !Array.isArray(body.items)) return { error: 'items must be an array' };
+  if (body.items.length === 0) return { error: 'At least one item is required' };
+  if (body.items.length > max) return { error: `At most ${max} items per request` };
+
+  const latestAllowed = Date.now() + 24 * 3600 * 1000;
+  const byId = new Map();
+  for (let i = 0; i < body.items.length; i++) {
+    const it = body.items[i];
+    if (!it || typeof it !== 'object') return { error: `Item ${i + 1}: must be an object` };
+    if (!isGuid(it.uuid)) return { error: `Item ${i + 1}: uuid must be a valid GUID` };
+    if (typeof it.paid !== 'boolean') return { error: `Item ${i + 1}: paid must be true or false` };
+    let paidAt = null;
+    if (it.paidAt !== undefined && it.paidAt !== null) {
+      if (!it.paid) return { error: `Item ${i + 1}: paidAt is only allowed with paid: true` };
+      const t = Date.parse(it.paidAt);
+      if (!Number.isFinite(t) || t < Date.UTC(1990, 0, 1) || t > latestAllowed) return { error: `Item ${i + 1}: paidAt must be a valid date` };
+      paidAt = new Date(t).toISOString();
+    }
+    byId.set(it.uuid.toLowerCase(), { uuid: it.uuid, paid: it.paid, paidAt });
+  }
+  return { value: [...byId.values()] };
 }
 
 export function validateExpenseList(body, max = 2000) {

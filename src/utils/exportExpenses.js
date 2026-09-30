@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { apiFetch } from '../lib/apiClient';
+import { paidLabel, formatPaidDate } from './paidLabel';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -26,6 +27,8 @@ export async function exportExpensesToExcel(params, fileName = 'GaddiTracker_Exp
     Category: row.category,
     Type: row.type,
     Amount: row.amount,
+    Paid: paidLabel(row.type, !!row.paid),
+    'Paid on': formatPaidDate(row.paidAt),
     Notes: row.tags || '',
     Sheet: row.sheet || '',
   })));

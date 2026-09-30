@@ -183,8 +183,11 @@ async function seedFromJson(pool) {
       const res = await ins.query(`
         IF NOT EXISTS (SELECT 1 FROM Expenses WHERE id = @id)
            AND NOT EXISTS (SELECT 1 FROM Expenses WHERE month = @month AND category_id = @cid AND user_id = @userId)
-          INSERT INTO Expenses (id, month, category_id, amount, type_id, notes, sheet, user_id)
-          VALUES (@id, @month, @cid, @amount, @tid, @notes, @sheet, @userId);
+          INSERT INTO Expenses (id, month, category_id, amount, type_id, notes, sheet, user_id, paid_at)
+          VALUES (@id, @month, @cid, @amount, @tid, @notes, @sheet, @userId,
+                  -- Imported history: months before the current one count as paid (migration 007)
+                  CASE WHEN @month < FORMAT(SWITCHOFFSET(SYSDATETIMEOFFSET(), '+05:30'), 'yyyy-MM')
+                       THEN CAST(EOMONTH(CAST(@month + '-01' AS DATE)) AS DATETIME2) END);
       `);
       if ((res.rowsAffected[0] || 0) > 0) inserted++; else skipped++;
 

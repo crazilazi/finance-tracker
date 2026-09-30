@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Card, Button, InputNumber, Progress, Tag, Collapse, Spin, Tooltip } from 'antd';
-import { LeftOutlined, RightOutlined, CheckCircleFilled, PlusOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
+import { Card, Button, InputNumber, Progress, Tag, Collapse, Spin, Tooltip, Popconfirm } from 'antd';
+import { LeftOutlined, RightOutlined, CheckCircleFilled, PlusOutlined, ThunderboltOutlined, SettingOutlined, CheckOutlined } from '@ant-design/icons';
 import { setSummaryMonth, setCurrentPage, selectCan, setUnlockPromptOpen } from '../../expenses/expensesSlice';
+import PaidTag from '../../../components/ui/PaidTag';
+import { formatPaidDate } from '../../../utils/paidLabel';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -24,7 +26,8 @@ const TYPE_COLORS = { Expense: 'red', EMI: 'blue', Saving: 'green', Income: 'cya
 /**
  * "This month" checklist. Shows which usual categories are recorded for the
  * selected month, lets the user add the missing ones with a pre-filled amount,
- * or fill them all in one click.
+ * or fill them all in one click. Recorded entries carry a one-tap paid /
+ * pending toggle, pending first, with "Mark all paid" for the month.
  *
  * compact: single-line banner (used above the Data Table); hidden when nothing is missing.
  */
@@ -47,7 +50,22 @@ export default function ThisMonthCard({ compact = false }) {
   }, [summary]);
 
   const missing = useMemo(() => (summary?.items || []).filter(i => !i.recorded), [summary]);
-  const recorded = useMemo(() => (summary?.items || []).filter(i => i.recorded), [summary]);
+
+  // Every row recorded this month: usual categories and any others ("extras")
+  const recordedRows = useMemo(() => {
+    if (!summary) return [];
+    const usual = summary.items.filter(i => i.recorded && i.uuid).map(i => ({
+      key: i.uuid, uuid: i.uuid, category: i.category, icon: i.icon, type: i.type,
+      amount: i.amount, budget: i.budget, paid: !!i.paid, paidAt: i.paidAt,
+    }));
+    const extras = summary.extras.map(e => ({
+      key: e.uuid, uuid: e.uuid, category: e.category, icon: null, type: e.type,
+      amount: e.amount, budget: null, paid: !!e.paid, paidAt: e.paidAt,
+    }));
+    return [...usual, ...extras];
+  }, [summary]);
+  const pendingRows = recordedRows.filter(r => !r.paid);
+  const paidRows = recordedRows.filter(r => r.paid);
 
   const draftTotal = missing.reduce((s, i) => s + (Number(drafts[i.categoryId]) || 0), 0);
   const fillable = missing.filter(i => Number(drafts[i.categoryId]) > 0);
@@ -66,6 +84,48 @@ export default function ThisMonthCard({ compact = false }) {
       type: 'expenses/fillMonth',
       payload: { month, items: fillable.map(i => ({ category: i.category, amount: Number(drafts[i.categoryId]), type: i.type })) },
     });
+  };
+
+  const openUnlock = () => dispatch(setUnlockPromptOpen(true));
+
+  const togglePaid = (row, paid) => {
+    if (!can.status) { openUnlock(); return; }
+    dispatch({ type: 'expenses/setPaid', payload: { items: [{ uuid: row.uuid, paid }] } });
+  };
+
+  const markAllPaid = () => {
+    if (!can.status) { openUnlock(); return; }
+    if (pendingRows.length === 0) return;
+    dispatch({
+      type: 'expenses/setPaid',
+      payload: {
+        items: pendingRows.map(r => ({ uuid: r.uuid, paid: true })),
+        notice: `Marked ${pendingRows.length} ${labelFor(month, true)} ${pendingRows.length === 1 ? 'entry' : 'entries'} as done · Ctrl+Z to undo`,
+      },
+    });
+  };
+
+  const renderRecordedRow = (row) => {
+    const overBudget = row.budget && row.amount !== null && row.amount > row.budget;
+    return (
+      <div key={row.key} style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10,
+        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        <span style={{ width: 22, textAlign: 'center', flexShrink: 0 }}>{row.icon || '•'}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {row.category} <Tag color={TYPE_COLORS[row.type] || 'default'} style={{ marginLeft: 4, fontSize: 10, lineHeight: '16px' }}>{row.type}</Tag>
+          </div>
+          <div className="text-gray-500" style={{ fontSize: 11 }}>
+            <span style={{ color: overBudget ? '#f87171' : undefined }}>{fmt(row.amount)}</span>
+            {row.budget ? ` of ${fmt(row.budget)} budget` : ''}
+            {row.paid && row.paidAt ? ` · ${formatPaidDate(row.paidAt)}` : ''}
+          </div>
+        </div>
+        <PaidTag type={row.type} paid={row.paid} paidAt={row.paidAt} onToggle={(p) => togglePaid(row, p)} locked={!can.status} onLocked={openUnlock} />
+      </div>
+    );
   };
 
   // ── Compact banner ────────────────────────────────────────────────────────
@@ -112,6 +172,12 @@ export default function ThisMonthCard({ compact = false }) {
               <span className="text-gray-400">Total {fmt(summary.monthTotal)}</span>
             </div>
           )}
+          {summary && summary.recordedRows > 0 && (
+            <span style={{ fontSize: 12, fontWeight: 500, color: summary.pendingCount === 0 ? '#34d399' : '#9ca3af' }}>
+              {summary.pendingCount === 0 ? <CheckCircleFilled style={{ marginRight: 4 }} /> : null}
+              Paid {summary.paidCount} of {summary.recordedRows}
+            </span>
+          )}
         </div>
       }
     >
@@ -128,7 +194,7 @@ export default function ThisMonthCard({ compact = false }) {
       )}
 
       {summary && summary.usualCount > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: recordedRows.length > 0 ? 12 : 0, opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s' }}>
           {complete ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#34d399', fontWeight: 600 }}>
               <CheckCircleFilled /> All usual entries are recorded for {labelFor(month)}.
@@ -186,24 +252,49 @@ export default function ThisMonthCard({ compact = false }) {
             </>
           )}
 
-          {(recorded.length > 0 || summary.extras.length > 0) && (
+        </div>
+      )}
+
+      {summary && recordedRows.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+          {pendingRows.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                  To pay ({pendingRows.length})
+                  {summary.pendingOutflow > 0 && <span className="font-normal normal-case tracking-normal"> · {fmt(summary.pendingOutflow)}</span>}
+                </span>
+                <Popconfirm
+                  title={`Mark all ${pendingRows.length} as done?`}
+                  description={`Every pending ${labelFor(month, true)} entry is marked paid (income as received). Ctrl+Z undoes it.`}
+                  onConfirm={markAllPaid}
+                  okText="Mark all"
+                  cancelText="Cancel"
+                  disabled={!can.status}
+                >
+                  <Button size="small" icon={<CheckOutlined />} onClick={!can.status ? openUnlock : undefined}>Mark all paid</Button>
+                </Popconfirm>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 8 }}>
+                {pendingRows.map(renderRecordedRow)}
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#34d399', fontSize: 13, fontWeight: 600 }}>
+              <CheckCircleFilled /> Everything recorded for {labelFor(month)} is paid.
+            </div>
+          )}
+
+          {paidRows.length > 0 && (
             <Collapse
               size="small"
               ghost
               items={[{
-                key: 'recorded',
-                label: <span className="text-xs text-gray-400">Recorded this month · {recorded.length} usual{summary.extras.length ? ` + ${summary.extras.length} other` : ''}</span>,
+                key: 'paid',
+                label: <span className="text-xs text-gray-400">Paid · {paidRows.length}</span>,
                 children: (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {recorded.map(i => (
-                      <Tag key={i.categoryId} style={{ margin: 0 }}>
-                        {i.icon ? `${i.icon} ` : ''}{i.category}: <b>{fmt(i.amount)}</b>
-                        {i.budget ? <span style={{ color: i.amount > i.budget ? '#f87171' : '#9ca3af' }}> / {fmt(i.budget)}</span> : null}
-                      </Tag>
-                    ))}
-                    {summary.extras.map(e => (
-                      <Tag key={e.uuid} color="default" style={{ margin: 0, opacity: 0.8 }}>{e.category}: <b>{fmt(e.amount)}</b></Tag>
-                    ))}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 8 }}>
+                    {paidRows.map(renderRecordedRow)}
                   </div>
                 ),
               }]}

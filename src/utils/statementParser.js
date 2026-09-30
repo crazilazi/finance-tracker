@@ -316,7 +316,8 @@ export function reconcileWithDatabase(groups, existingData = []) {
 /**
  * Sync payload from the ticked rows: rows that now share a month, category and
  * type (after inline edits) are added together, and no uuid is sent, so the
- * server upserts each (month, category) exactly once.
+ * server upserts each (month, category) exactly once. Every row is marked
+ * paid: the statement shows the money has moved.
  */
 export function buildSyncPayload(items) {
   const byKey = new Map();
@@ -333,6 +334,7 @@ export function buildSyncPayload(items) {
         amount: Math.round(Number(it.amount) * 100) / 100,
         type: it.type,
         tags: it.description ? String(it.description).slice(0, 500) : undefined,
+        paid: true,
       });
     }
   }
