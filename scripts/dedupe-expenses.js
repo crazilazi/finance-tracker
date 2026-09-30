@@ -10,6 +10,10 @@
  * two categories). "Keep one" deletes the others: right when the same entry was
  * saved twice. Every change is recorded in Expenses_Audit by the existing trigger.
  *
+ * Run scripts/undo-legacy-reimport.js first: rows that were deleted in the app
+ * and brought back by an old migration run are flagged here, and removing them
+ * usually resolves their group.
+ *
  * Connection comes from DATABASE_URL in .env, as for migrate-to-sql.js.
  */
 import path from 'path';
@@ -33,7 +37,8 @@ async function loadGroups(pool) {
     )
     SELECT e.id, e.user_id, u.username, e.month, e.category_id, c.name AS category,
            e.amount, e.notes, e.sheet,
-           (SELECT MIN(a.audit_timestamp) FROM Expenses_Audit a WHERE a.id = e.id AND a.audit_action = 'INSERT') AS created
+           (SELECT MIN(a.audit_timestamp) FROM Expenses_Audit a WHERE a.id = e.id AND a.audit_action = 'INSERT') AS created,
+           (SELECT MAX(a.audit_timestamp) FROM Expenses_Audit a WHERE a.id = e.id AND a.audit_action = 'DELETE') AS deleted_before
     FROM Expenses e
     JOIN dup d ON d.user_id = e.user_id AND d.month = e.month AND d.category_id = e.category_id
     JOIN Categories c ON c.id = e.category_id
@@ -55,6 +60,10 @@ function printGroup(rows, index, total) {
   rows.forEach((r, i) => {
     const when = r.created ? new Date(r.created).toISOString().slice(0, 16).replace('T', ' ') : 'unknown';
     console.log(`  ${i + 1}) ${inr(r.amount).padEnd(14)} added ${when}${r.notes ? `  notes: ${String(r.notes).slice(0, 60)}` : ''}`);
+    if (r.deleted_before) {
+      const d = new Date(r.deleted_before).toISOString().slice(0, 16).replace('T', ' ');
+      console.log(`     ↳ you deleted this row on ${d} and a migration run brought it back; see scripts/undo-legacy-reimport.js`);
+    }
   });
   const sum = rows.reduce((s, r) => s + Number(r.amount), 0);
   console.log(`     sum ${inr(sum)}`);

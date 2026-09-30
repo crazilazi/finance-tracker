@@ -149,9 +149,13 @@ Re-run this after every pull that adds a file under `scripts/migrations/`. `004_
 
 `006_expense_unique_month_category.sql` makes the database enforce one entry per month and category. If older data already has two rows for the same month and category, the migration stops without changing anything. Review and resolve those rows, then run the migration again:
 ```bash
-node scripts/dedupe-expenses.js          # list duplicates, change nothing
-node scripts/dedupe-expenses.js --fix    # per group: add together, keep one, or skip
+node scripts/undo-legacy-reimport.js         # rows you deleted that an old migration run brought back
+node scripts/undo-legacy-reimport.js --fix   # per row: delete again, or keep
+node scripts/dedupe-expenses.js              # list duplicates, change nothing
+node scripts/dedupe-expenses.js --fix        # per group: add together, keep one, or skip
 ```
+
+**The one-time legacy import.** `scripts/migrate.sql` also imports an old flat `Expenses_Legacy` table, if one exists. It now runs at most once, only into an empty `Expenses` table, and records itself in `SchemaMigrations` as `migrate.sql:legacy-import`. Before this guard it ran on every migration and re-inserted legacy rows that had been deleted in the app; `undo-legacy-reimport.js` finds and removes those.
 
 **Legacy and seeded accounts.** Users created by the legacy migration or by `--seed` have no GitHub identity, and sign-in never links them automatically by username. Link one explicitly:
 ```bash

@@ -1,0 +1,4 @@
+{
+  "//": "The scripts in this folder are ES modules; this stops Node reparsing each one with a warning.",
+  "type": "module"
+}
