@@ -8,10 +8,8 @@ A state-of-the-art, highly intuitive user-scoped financial analytics platform bu
 
 ### 🔐 1. User-Based Scoping & OAuth 2.0 Authentication
 - **Multi-Tenant User Data Isolation**: Every transaction, category, and report is automatically scoped to the logged-in user context.
-- **OAuth 2.0 Engine**: Supports real GitHub OAuth 2.0 (with CSRF `state` verification) and an interactive Mock OAuth 2.0 consent page that is only available in development and only when GitHub is not configured.
-- **Session Security**: Signed JWT sessions in `HttpOnly`, `SameSite=Lax`, `Secure` cookies; every API request is scoped by the `user_id` in the session, never by a client-supplied name. Every request also checks the session against the database, so **Log out** ends that session for good (a copied cookie stops working too), and **Settings → Sign out other devices** ends every other session at once.
-- **Content-Security-Policy**: Scripts load only from the app itself and fonts only from Google Fonts. The policy ships in report-only mode: violations are written to the server log by `/api/csp-report`, and `CSP_ENFORCE` in `next.config.mjs` switches it to enforcing once the log stays quiet.
-- **Input Validation**: All expense payloads and query parameters are validated server-side (month format, amount range, allow-listed types, GUID ids) and SQL errors are never returned to the browser.
+- **OAuth 2.0 Engine**: Supports real GitHub OAuth 2.0.
+ **Input Validation**: All expense payloads and query parameters are validated server-side (month format, amount range, allow-listed types, GUID ids) and SQL errors are never returned to the browser.
 
 ### 📋 2. Copy Month Expense Template
 - **Template Cloner**: Select any historical month as a template, preview all entries, adjust individual amounts inline, select/deselect items, and save directly to a target month. The copy is saved in one transaction, and it needs an unlocked tab: hidden or demo amounts are never copied as real ones.
